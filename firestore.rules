@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default fallback to block everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Admin check logic
+    function isAdmin() {
+      return request.auth != null && 
+             (request.auth.token.email == "writingandreserching18@gmail.com" || 
+              request.auth.uid == "79NOBF9MlOeZxsKdUw6I8UjEn2w1");
+    }
+    
+    // Admissions collection rules
+    match /admissions/{admissionId} {
+      // Anyone can submit their admission request, or admin can directly insert records
+      allow create: if true;
+                     
+      // Allow fetching single admission by ID (for success page and generated ID card view)
+      allow get: if true;
+      
+      // Allow parent searches by Roll ID to find specific students
+      allow list: if true;
+      
+      // Only admin can approve, reject, update, or delete records
+      allow update, delete: if isAdmin();
+    }
+    
+    // Batches collection rules
+    match /batches/{batchId} {
+      // Anyone can view training batches on lander and form
+      allow read: if true;
+      
+      // Only authorized admin can manage (create, update, delete) batches
+      allow write: if isAdmin();
+    }
+    
+    // Exams collection rules
+    match /exams/{examId} {
+      allow create, update: if true;
+      allow get, list: if true;
+      allow delete: if isAdmin();
+    }
+    
+    // Exam Schedules collection rules
+    match /exam_schedules/{scheduleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Settings collection rules
+    match /settings/{settingId} {
+      // Allow public get and list queries to sync site configurations dynamically
+      allow read: if true;
+      // Allow public write specifically for student ID counters, admin for everything else
+      allow write: if isAdmin() || settingId.matches('^counters_.*');
+    }
+    
+    // Attendance collection rules
+    match /attendance/{attendanceId} {
+      // Allow read and write for coaches (managed via PIN client-side) and administrator
+      allow read, write: if true;
+    }
+
+    // Attendance logs collection rules (for parent QR check-in)
+    match /attendance_logs/{logId} {
+      allow read, create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Students collection rules
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Candidates collection rules
+    match /candidates/{candidateId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // SEO Indexing logs collection rules
+    match /seo_indexing_logs/{logId} {
+      allow create: if true;
+      allow read, write: if isAdmin();
+    }
+
+    // Receipts collection rules
+    match /receipts/{receiptId} {
+      // Allow parents to search receipts for student results
+      allow get, list: if true;
+      // Only authorized admin is allowed to create, update or delete receipts
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Parent Queries collection rules
+    match /parent_queries/{queryId} {
+      // Anyone can submit a query online
+      allow create: if true;
+      // Only admin can read, update, or delete parent queries
+      allow get, list, update, delete: if isAdmin();
+    }
+  }
+}

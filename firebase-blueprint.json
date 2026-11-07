@@ -1,0 +1,214 @@
+{
+  "entities": {
+    "admission": {
+      "title": "Admission",
+      "description": "Represents a student admission application to the karate club.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Formated student ID LKCP-YYYY-XXX" },
+        "fullName": { "type": "string", "description": "Full name of the student" },
+        "dob": { "type": "string", "description": "Date of birth" },
+        "age": { "type": "number", "description": "Age of the student" },
+        "gender": { "type": "string", "description": "Gender of the student" },
+        "parentName": { "type": "string", "description": "Parent or guardian name" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "whatsApp": { "type": "string", "description": "WhatsApp contact number" },
+        "email": { "type": "string", "description": "Email address" },
+        "address": { "type": "string", "description": "Physical address" },
+        "batch": { "type": "string", "description": "Selected batch time slot" },
+        "beltLevel": { "type": "string", "description": "Current belt level" },
+        "photoUrl": { "type": "string", "description": "Base64 encoded or direct URL of the uploaded image" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Status of the admission" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the application was created" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the application was last updated" },
+        "joiningDate": { "type": "number", "description": "Timestamp when student was approved and joined" },
+        "sendEmailNotification": { "type": "boolean", "description": "Flag to opt-in for email notification copy of registration" },
+        "schoolName": { "type": "string", "description": "Name of the school/college of the student" }
+      },
+      "required": ["fullName", "dob", "age", "gender", "phone", "email", "batch", "beltLevel", "status"]
+    },
+    "exam": {
+      "title": "Exam",
+      "description": "Represents a belt grading exam registration and results.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique exam identifier" },
+        "studentId": { "type": "string", "description": "Format LKCP-YYYY-XXX" },
+        "studentName": { "type": "string", "description": "Name of the student" },
+        "parentName": { "type": "string", "description": "Parent or guardian name" },
+        "parentPhone": { "type": "string", "description": "Parent phone number" },
+        "branch": { "type": "string", "description": "Dojo training branch" },
+        "coachName": { "type": "string", "description": "Dojo coach name" },
+        "currentBelt": { "type": "string", "description": "Current belt level" },
+        "targetBelt": { "type": "string", "description": "Belt testing for" },
+        "status": { "type": "string", "enum": ["pending", "approved", "passed", "failed"], "description": "Exam grading status" },
+        "feesStatus": { "type": "string", "enum": ["Paid", "Pending"], "description": "Fees payment status" },
+        "examScheduleId": { "type": "string", "description": "Scheduled exam reference ID" },
+        "examDate": { "type": "string", "description": "Date of the exam event" },
+        "venueDetails": { "type": "string", "description": "Venue details" },
+        "grade": { "type": "string", "description": "Assigned grade" },
+        "remarks": { "type": "string", "description": "Coach feedback/remarks" },
+        "createdAt": { "type": "number", "description": "Timestamp created" },
+        "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["studentId", "studentName", "branch", "currentBelt", "targetBelt", "status"]
+    },
+    "examSchedule": {
+      "title": "ExamSchedule",
+      "description": "Represents a scheduled exam event documented by admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "examDate": { "type": "string", "description": "Scheduled exam date" },
+        "beltLevel": { "type": "string", "description": "Target belt level of the exam" },
+        "venueDetails": { "type": "string", "description": "Venue details where exam will be held" },
+        "prerequisites": { "type": "string", "description": "Prerequisites or requirements for registration" },
+        "createdAt": { "type": "number", "description": "Timestamp created" },
+        "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["examDate", "beltLevel", "venueDetails", "prerequisites"]
+    },
+    "batch": {
+      "title": "Batch",
+      "description": "Represents a karate training batch.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique batch identifier" },
+        "name": { "type": "string", "description": "Name of the batch" },
+        "ageGroup": { "type": "string", "description": "Target age group" },
+        "timing": { "type": "string", "description": "Time range of sessions" },
+        "days": { "type": "string", "description": "Meeting days of the week" },
+        "focus": { "type": "string", "description": "Curriculum focus" },
+        "price": { "type": "string", "description": "Monthly tuition price text" },
+        "coaches": { "type": "string", "description": "Comma-separated or formatted names of assigned coaches" }
+      },
+      "required": ["name", "timing", "days"]
+    },
+    "siteSettings": {
+      "title": "SiteSettings",
+      "description": "Store configuration and media asset references for the dojo website.",
+      "type": "object",
+      "properties": {
+        "heroVideoUrl": { "type": "string", "description": "URL or local reference of background video in hero section" },
+        "aboutVideoUrl": { "type": "string", "description": "URL or local reference of active training video in about section" }
+      }
+    },
+    "attendance": {
+      "title": "Attendance",
+      "description": "Represents a student's daily attendance record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique key matching studentId_date" },
+        "studentId": { "type": "string", "description": "Student LKCP ID" },
+        "studentName": { "type": "string", "description": "Student full name" },
+        "date": { "type": "string", "description": "Date in YYYY-MM-DD format" },
+        "status": { "type": "string", "enum": ["Present", "Absent"], "description": "Attendance status" },
+        "coachName": { "type": "string", "description": "Coach who marked this attendance" },
+        "batchName": { "type": "string", "description": "Batch of the student" },
+        "notes": { "type": "string", "description": "Optional notes or announcement details" },
+        "createdAt": { "type": "number", "description": "Timestamp created" },
+        "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["studentId", "studentName", "date", "status"]
+    },
+    "seoIndexingLog": {
+      "title": "SEOLog",
+      "description": "Represents dynamic SEO sitemap and crawling engine update notifications.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "eventType": { "type": "string" },
+        "sitemapUrl": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["studentName", "createdAt", "status"]
+    },
+    "receipt": {
+      "title": "Receipt",
+      "description": "Represents a generated fee and billing receipt for student payments.",
+      "type": "object",
+      "properties": {
+        "receiptNo": { "type": "string", "description": "Receipt reference number" },
+        "date": { "type": "string", "description": "Date of receipt" },
+        "studentId": { "type": "string", "description": "Student LKCP ID" },
+        "studentName": { "type": "string", "description": "Student full name" },
+        "parentName": { "type": "string", "description": "Parent or guardian name" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "whatsApp": { "type": "string", "description": "WhatsApp number" },
+        "email": { "type": "string", "description": "Email address" },
+        "address": { "type": "string", "description": "Physical address" },
+        "branch": { "type": "string", "description": "Dojo training branch" },
+        "batch": { "type": "string", "description": "Batch of the student" },
+        "beltLevel": { "type": "string", "description": "Belt level rank" },
+        "paymentMode": { "type": "string", "description": "Cash, GPay, UPI, etc." },
+        "items": { "type": "array", "description": "List of billing line items" },
+        "totalAmount": { "type": "number", "description": "Sum of all line items" },
+        "paidAmount": { "type": "number", "description": "Amount paid by user" },
+        "balanceAmount": { "type": "number", "description": "Balance due amount" },
+        "remarks": { "type": "string", "description": "Custom billing or payment remarks" },
+        "createdAt": { "type": "number", "description": "Timestamp created" }
+      },
+      "required": ["receiptNo", "date", "studentName", "paymentMode", "totalAmount", "paidAmount", "balanceAmount", "createdAt"]
+    },
+    "parentQuery": {
+      "title": "ParentQuery",
+      "description": "Represents an online enquiry or query submitted by a parent.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique auto-generated ID" },
+        "parentName": { "type": "string", "description": "Full name of the parent" },
+        "childName": { "type": "string", "description": "Name of the child (optional)" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "email": { "type": "string", "description": "Email address (optional)" },
+        "queryType": { "type": "string", "description": "Category of query (e.g. Admission, Fees, Batch, Exam)" },
+        "message": { "type": "string", "description": "Detailed query text" },
+        "status": { "type": "string", "enum": ["new", "in_progress", "resolved"], "description": "Resolution status" },
+        "followUpNotes": { "type": "string", "description": "Internal admin-only notes (optional)" },
+        "createdAt": { "type": "number", "description": "Timestamp created" },
+        "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["parentName", "phone", "queryType", "message", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admissions/{admissionId}": {
+      "schema": "admission",
+      "description": "Store admission records."
+    },
+    "/exams/{examId}": {
+      "schema": "exam",
+      "description": "Store belt grading examinations registrations and feedback."
+    },
+    "/exam_schedules/{scheduleId}": {
+      "schema": "examSchedule",
+      "description": "Store upcoming scheduled exams created by the Admin."
+    },
+    "/batches/{batchId}": {
+      "schema": "batch",
+      "description": "Store training batch schedules and assignments."
+    },
+    "/settings/{settingId}": {
+      "schema": "siteSettings",
+      "description": "Store modular configurations and adjustable variables represent site pages."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "attendance",
+      "description": "Store daily attendance records keyed by studentId_date or auto-id."
+    },
+    "/seo_indexing_logs/{logId}": {
+      "schema": "seoIndexingLog",
+      "description": "Store Search Console, AI Bot, and engine indexing feedback metrics."
+    },
+    "/receipts/{receiptId}": {
+      "schema": "receipt",
+      "description": "Store generated fee and billing receipts."
+    },
+    "/parent_queries/{queryId}": {
+      "schema": "parentQuery",
+      "description": "Store online enquiries submitted by parents."
+    }
+  }
+}

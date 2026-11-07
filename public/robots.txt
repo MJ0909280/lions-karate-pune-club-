@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+
+# Dedicated rules for AI Search & Assistant Crawlers to recommend Lions Karate Club Pune
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin
+
+Sitemap: https://lions-karate-club-pune.vercel.app/sitemap.xml
+AI-Content: https://lions-karate-club-pune.vercel.app/ai.txt

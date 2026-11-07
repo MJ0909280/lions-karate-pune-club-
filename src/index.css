@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;600;700;900&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-kanji: "Noto Serif JP", serif;
+  --font-title: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Retheme colors matching Tokyo Crimson Red, Tokyo Ink Black & Pure Zen Alabaster */
+  --color-yellow-500: #FF2A35; /* Crisp Neon Crimson Red as accent instead of Muddy Gold */
+  --color-yellow-400: #FF4D55; /* Bright Crimson */
+  --color-yellow-600: #CC1F28; /* Deep Tokyo Crimson */
+  --color-yellow-300: #FF6E74;
+  --color-yellow-500-10: rgba(255, 42, 53, 0.12);
+  
+  --color-red-500: #FF2A35; /* Tokyo Crimson */
+  --color-red-650: #FF4D55; /* Tokyo Red Glow */
+  --color-red-600: #FF4D55;
+  --color-red-700: #CC1F28;
+  
+  /* Background system: Pure solid high-contrast Dojo Space Black */
+  --color-slate-950: #060607; /* Extreme Pitch Black Ground */
+  --color-slate-900: #0E0E10; /* Dojo Solid Black Panel */
+  --color-zinc-950: #060607;
+  --color-zinc-900: #0E0E10;
+  --color-zinc-850: #161619;  /* Defined Deep charcoal */
+  --color-zinc-800: #1E1E22;  /* Defined borders */
+  
+  /* Extremely bright, high-legibility crisp text scales */
+  --color-zinc-100: #FAFAFA;
+  --color-zinc-200: #F4F4F5;
+  --color-zinc-300: #E4E4E7;
+  --color-zinc-400: #A1A1AA;
+  --color-zinc-500: #71717A;
+  --color-zinc-600: #52525B;
+  
+  --color-slate-100: #FAFAFA;
+  --color-slate-200: #F4F4F5;
+  --color-slate-300: #E4E4E7;
+  --color-slate-400: #A1A1AA;
+}
+
+/* Custom styles for premium styling and printable elements */
+body {
+  background-color: #060607; /* Extreme Pitch Black Ground */
+  color: #FAFAFA; /* Pristine high-contrast White */
+  font-family: var(--font-body);
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+/* ============ CURSOR GLOW ============ */
+.cursor-glow {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 42, 53, 0.08) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.4s;
+  opacity: 0;
+}
+.cursor-glow.active {
+  opacity: 1;
+}
+
+/* Print CSS setup for downloading & printing the ID Card & Receipt */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-id-card, #printable-id-card *, #printable-receipt, #printable-receipt * {
+    visibility: visible;
+  }
+  #printable-id-card {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: none !important;
+    border: 6px solid #000000 !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  #printable-receipt {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    width: 210mm !important; /* standard A4 width */
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    padding: 10px !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Custom glowing effects representing Tokyo Crimson Artistic details */
+.glow-gold {
+  box-shadow: 0 0 15px rgba(255, 42, 53, 0.25);
+}
+.glow-red {
+  box-shadow: 0 0 20px rgba(255, 42, 53, 0.35);
+}
+.glow-border-gold {
+  border-color: rgba(255, 42, 53, 0.6);
+  box-shadow: 0 0 10px rgba(255, 42, 53, 0.25);
+}
+.gradient-text-gold {
+  background: linear-gradient(135deg, #FAFAFA 0%, #FF2A35 50%, #CC1F28 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.gradient-text-red {
+  background: linear-gradient(135deg, #FAFAFA 0%, #FF2A35 50%, #CC1F28 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Text Stroke effect for extra artistic drama */
+.text-stroke-title {
+  -webkit-text-stroke: 1.5px #FF2A35;
+  color: transparent;
+}
+
+/* Kanji font override for specific elements */
+.font-kanji {
+  font-family: var(--font-kanji);
+}
+
+

@@ -1,0 +1,22 @@
+{
+  "name": "Lions Karate Club Pune",
+  "version": "1.0.0",
+  "description": "Model Context Protocol interface for Lions Karate Club Pune - Admissions, Batches, Attendance, and Belt Examinations.",
+  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "tools": [
+      {
+        "name": "get_dojo_branches",
+        "description": "Get active training dojo location in Pune (Narhe Manaji Nagar)"
+      },
+      {
+        "name": "check_student_admission",
+        "description": "Check student membership status, roll ID, belt rank, and assigned coach"
+      },
+      {
+        "name": "get_batch_schedules",
+        "description": "Get daily training batch timing schedules and age group batches"
+      }
+    ]
+  }
+}

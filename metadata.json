@@ -1,0 +1,10 @@
+{
+  "name": "LIONS KARATE CLUB PUNE",
+  "description": "Official portal for LIONS KARATE CLUB PUNE. Admissions, profiles, and student registry management.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
