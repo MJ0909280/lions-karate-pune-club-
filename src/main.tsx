@@ -29,7 +29,9 @@ try {
     } else {
       window.addEventListener('load', () => {
         try {
-          navigator.serviceWorker.register('/sw.js').catch((error) => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            reg.update().catch(() => {});
+          }).catch((error) => {
             console.warn('PWA Service Worker registration failed:', error);
           });
         } catch (err) {

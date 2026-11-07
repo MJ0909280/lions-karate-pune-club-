@@ -1,111 +1,155 @@
-# 30-Day Overdue Fee Reminders Tab in Admin Panel
+# Monthly Fee Cycle Tracker (1st–10th) & Dynamic Multi-Month Reminders Implementation Plan
 
-Add a dedicated, automated fee reminder dashboard inside the Admin Panel that filters active students from the `admissions` collection whose last fee payment date is older than 30 days (or has no recorded payment within 30 days of admission), excludes students enrolled from Aryan Public School and Vasundhara Preprimary School, and provides a 1-click WhatsApp reminder button with personalized parent messaging.
+Replace arbitrary 30-day overdue numbers with a practical 1st-to-10th monthly fee tracker. Allows coaches and admins to 1-tap mark each student's monthly fee as Paid or Unpaid, automatically tracking unpaid months and generating dynamic WhatsApp reminders that list the exact unpaid months.
 
-### User Review & Critical Decisions
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The clarifying questions were completed with recommended standards:
-> - **Payment Recency Tracking**: The system calculates the last payment date by inspecting the most recent entry for the student across the `receipts` collection and the `admissions` document (`lastPaymentDate` or `createdAt` as fallback).
-> - **School Exclusion Filter**: Strict case-insensitive matching for `"Aryan Public School"` and `"Vasundhara Preprimary School"` (e.g. variations such as `"aryan public"`, `"vasundhara"`, `"vasundhara preprimary"`, `"aryan"`) to exclude those institutional cohorts from receiving karate fee reminder prompts.
-> - **Default WhatsApp Template**: Friendly, branded message from Lions Karate Club Pune containing the student's name, Karate Roll ID, days overdue, and Sensei contact details. Includes an in-tab editable message preview so the admin can customize before sending if desired.
-> - **Navigation Tab Label**: Integrated as **"Overdue Reminders"** with an amber/red overdue counter badge in the Admin Panel navigation bar.
+> The following decisions were clarified and confirmed:
+> - **Removal of 30-Day Overdue Banner**: The arbitrary statistics banner ("OVERDUE STUDENTS (>30 DAYS) 77 of 79 eligible / EST. OUTSTANDING DUES ₹1,15,500") is removed completely.
+> - **Monthly Due Date Context**: The dojo fee collection period is the **1st to 10th of every month**.
+> - **1-Tap Paid Toggles**: 1-tap button to mark the current month as Paid or Unpaid, accessible in **both Coach Portal and Admin Panel**.
+> - **Multi-Month Accumulation**: If a previous month was not paid, it remains marked unpaid. The system dynamically detects all unpaid months (e.g., *October, November — 2 Months Pending*).
+> - **Dynamic WhatsApp Message**: The WhatsApp message explicitly names the unpaid months and requests the parent contact Sensei Maruti Jadhav for the exact payment breakdown without hardcoded arbitrary rupee amounts.
+> - **Persistence**: Monthly fee payment statuses saved per student in Firestore (`monthly_fee_records` or student `paidMonths: string[]` e.g. `["2026-10", "2026-11"]`).
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
-- **What It Does**: Scans all student records in the `admissions` collection, joins them with payment history from `receipts` (and student document payment fields), identifies records where more than 30 days have elapsed since their last payment, filters out students belonging to Aryan Public School and Vasundhara Preprimary School, and presents an interactive action list with direct WhatsApp launch buttons.
-- **Target Persona**: Dojo Administrator (Shihan / Admin) tracking fee collections and following up with parents on outstanding dues without manually cross-referencing school rosters or paper registers.
-- **Key Value**: Eliminates manual cross-checking of school names and payment dates; allows 1-click overdue reminders directly through WhatsApp Web / mobile app with proper country code formatting (`+91`).
-
----
-
-### 2. User Experience & Visual Design
-
-- **Navigation & Tab Placement**:
-  - A new tab named **"Overdue Reminders"** placed alongside existing Admin tabs (*Student Directory*, *Parent Queries*, *Fees & Billing*, *Duplicate Finder*).
-  - Displays a dynamic badge showing the count of students with payments overdue by > 30 days (excluding the two exempted schools).
-- **Dashboard Metrics & Summary Cards**:
-  - Total Overdue Students (>30 Days).
-  - Total Outstanding Est. Fees.
-  - Exempted School Filter Indicator (tagging Aryan Public School & Vasundhara Preprimary as excluded).
-  - Quick Search bar (by student name, Roll ID, or parent phone number).
-- **Interactive Student List**:
-  - High-density data grid adhering to Dojo dark theme (`#0E0E10`, `#161619`, with `#FF2A35` and `#EAB308` accents).
-  - Columns: Student Photo & Bio, Karate Roll ID, Branch & Batch, School Name, Last Payment Date, Days Overdue, and WhatsApp Quick Action.
-  - Tabular numerals (`font-mono tabular-nums`) for dates, days elapsed, and phone numbers.
-- **1-Click WhatsApp Trigger**:
-  - Green WhatsApp action button (`bg-emerald-600 hover:bg-emerald-500`) formatted with `https://wa.me/{phone}?text={encodedMessage}`.
-  - Pre-populates a polite reminder:
-    ```
-    🥋 Lions Karate Club Pune — Monthly Fee Reminder
-    
-    Dear Parent,
-    This is a friendly reminder that karate training fees for [Student Name] (ID: [LKCP-YYYY-XXX]) were last updated on [Date] ([X] days ago).
-    
-    Kindly update the monthly dues at the Dojo or via UPI at your convenience.
-    
-    Sensei Maruti Jadhav
-    Lions Karate Club Pune
-    📞 +91 90496 88172
-    ```
-  - Also supports a **"Copy Phone Numbers"** quick tool to copy all overdue parents' phone numbers for bulk broadcast if needed.
+1. **Monthly Due Logic (1st–10th)**:
+   - Karate training fees are due between the 1st and 10th of each month.
+   - For any active student, the system evaluates fee status for the current calendar month and any preceding months they were enrolled.
+2. **1-Tap Paid/Unpaid Status**:
+   - For each student, coaches and admins see the current month status (e.g. `Nov 2026: [✓ Paid] / [Mark Paid]`).
+   - If marked Paid, the student is up-to-date. Next month (Dec 2026), only December will be due.
+   - If left Unpaid, when the next month arrives, the system registers both months as pending.
+3. **Dynamic WhatsApp Reminder**:
+   - If 1 month unpaid: *"Reminder for November 2026 monthly karate training fees (Due: 1st–10th)."*
+   - If 2+ months unpaid: *"Important Reminder: Monthly training fees are pending for: October 2026, November 2026 (Total: 2 Months). Kindly clear the pending dues."*
+   - Includes Sensei Maruti Jadhav's contact (+91 90496 88172) and UPI/Cash guidance.
+4. **Aryan & Vasundhara Protection**:
+   - Preserves automatic exemption for Aryan Public School and Vasundhara Preprimary School students where fees are managed directly by school administration.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 2. User Experience & Visual Design
 
-- **Decision 1: Joint Recency Calculation (Receipts + Admissions)**
-  - *Chosen Approach*: Examine the latest timestamp between `receipt.createdAt` / `receipt.date` (matched by `studentId` or `studentName`) and the admission's `lastPaymentDate` / `createdAt`. If greater than $30 \times 24 \times 60 \times 60 \times 1000$ ms, mark as overdue.
-  - *Why*: In Firestore, some students have payments recorded as `receipts` documents, while others have initial payments during admission. Looking at both guarantees no false positives for recently paying students.
-- **Decision 2: Strict Normalized School Filtering**
-  - *Chosen Approach*: Normalize `student.schoolName` (lowercase, trim, stripped spaces/punctuation) and exclude if it contains `"aryan"` or `"vasundhara"`.
-  - *Why*: Accommodates typo variations from parents when filling the admission form (e.g. `"Aryan public School"`, `"Aryan Public"`, `"Vasundhara Pre-Primary"`, `"Vasundhara pre primary"`).
-- **Decision 3: Zero-Disruption Tab Addition**
-  - *Chosen Approach*: Add `overdue_reminders` to `adminTab` state type in `AdminPanel.tsx` and render as a peer tab with standard desktop and mobile drawer navigation support.
-  - *Why*: Keeps the existing *Student Directory*, *Bills*, and *Queries* tabs intact while giving the admin a dedicated focused space for dues collection.
-
----
-
-### 4. Technical Architecture & Data Strategy
+### Key User Flows
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                 Firestore Realtime Collections              │
-│   ┌───────────────────────────┐ ┌─────────────────────────┐ │
-│   │   'admissions' Collection │ │  'receipts' Collection  │ │
-│   │  (fullName, studentId,    │ │ (studentId, paidAmount, │ │
-│   │   schoolName, phone, ...) │ │  createdAt, date, ...)  │ │
-│   └─────────────┬─────────────┘ └────────────┬────────────┘ │
-└─────────────────┼────────────────────────────┼──────────────┘
-                  ▼                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 AdminPanel Overdue Hook/Filter               │
-│                                                             │
-│ 1. Normalize schoolName                                     │
-│    -> Exclude: /aryan/i and /vasundhara/i                   │
-│                                                             │
-│ 2. Compute Last Payment Date:                               │
-│    -> max(latestReceiptDate, lastPaymentDate, createdAt)    │
-│                                                             │
-│ 3. Filter:                                                  │
-│    -> (Now - LastPaymentDate) > 30 Days                     │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│               "Overdue Reminders" Tab UI                    │
-│  ┌───────────────────────┐  ┌────────────────────────────┐  │
-│  │ Metrics: Count & Days │  │ Search & WhatsApp Template │  │
-│  └───────────────────────┘  └────────────────────────────┘  │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ Student Overdue Table & 1-Click WhatsApp Direct Links │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+               [Coach Portal / Admin Panel]
+                           │
+                           ▼
+          [Student Row: Monthly Fee Tracker]
+    ┌──────────────────────────────────────────────┐
+    │ Student: Aarav Sharma (ID: LKCP-2026-012)    │
+    │ Branch: Manaji Nagar Branch                  │
+    │                                              │
+    │ Status: ⚠️ 2 Months Pending                   │
+    │  • Oct 2026: [Unpaid] [Mark Paid]            │
+    │  • Nov 2026: [Unpaid] [Mark Paid]            │
+    │                                              │
+    │ [💬 Send WhatsApp Reminder (2 Months)]       │
+    └──────────────────────┬───────────────────────┘
+                           │
+                           ▼ (Click)
+    [WhatsApp Launched with Personalized Message]
+    "Dear Parent of Aarav Sharma,
+     Monthly fees are pending for: October 2026, November 2026.
+     Kindly complete the payment (Due date: 1st-10th of every month)..."
 ```
 
-- **Interactive Component & State Mapping**:
-  - `adminTab`: Updated to include `'overdue_reminders'`.
-  - `overdueSearch`: Text search state for filtering students by name, ID, or phone.
-  - `customReminderMsg`: Editable reminder message prefix state.
-  - WhatsApp URL generation: Formats phone numbers by stripping non-digit characters and prepending `91` if not already included.
+### Visual Styling
+- **Status Badges**:
+  - Green unboxed text (`text-emerald-400`): Up-to-date (`Nov 2026 Paid`).
+  - Amber badge (`text-yellow-400 bg-yellow-500/10`): Current month due (1st–10th cycle).
+  - Crimson badge (`text-rose-400 bg-rose-500/10`): 2+ months overdue with exact count (`2 Months Pending`).
+- **1-Tap Action**:
+  - Compact toggle button `[✓ Mark Nov Paid]` which instantly turns to `[Paid ✓]` with green checkmark.
+- **Clean Table**:
+  - Replaces the 4 arbitrary stat cards with a clean, focused control strip:
+    - Quick branch filter (`Manaji Nagar`, `Bhumkar Bridge`, `Jambulwadi Lake View`).
+    - Month selector (`November 2026`).
+    - Simple summary counter (`Paid: X · Pending: Y`).
+
+---
+
+## 3. Technical Architecture & Data Strategy
+
+### Data Model & Firestore Structure
+
+```
+Firestore: admissions/{studentDocId}
+├── paidMonths: ["2026-09", "2026-10"]  <-- Array of YYYY-MM strings marked paid
+└── lastPaymentDate: timestamp
+```
+Or subcollection/document in `monthly_fees/{studentId}`:
+- `studentId`: string
+- `paidMonths`: Record<string, boolean> (e.g. `{"2026-10": true, "2026-11": false}`)
+- `updatedAt`: timestamp
+
+Using `paidMonths: string[]` on the `admissions` document (and synced in `admissions` state) provides:
+- Instant atomic reads with the student document.
+- Zero extra queries or latency.
+- Simple 1-tap toggling: `arrayUnion(currentMonthKey)` / `arrayRemove(currentMonthKey)`.
+
+### Dynamic Message Generator
+
+```typescript
+function generateMonthlyFeeWhatsAppMessage(student: Admission, unpaidMonths: string[]): string {
+  const monthNames = unpaidMonths.map(formatMonthName).join(', ');
+  const monthCountText = unpaidMonths.length === 1 
+    ? `for *${monthNames}*` 
+    : `for *${monthNames}* (Total: *${unpaidMonths.length} Months Pending*)`;
+
+  return `🥋 *LIONS KARATE CLUB PUNE*
+*Monthly Dojo Training Fee Reminder*
+
+Dear Parent of *${student.fullName}* (Student ID: *${student.studentId}*),
+🥋 *Branch:* ${student.branch || 'Manaji Nagar Branch'}
+🥋 *Belt Level:* ${student.beltLevel}
+
+This is a gentle reminder that karate training fees ${monthCountText} are pending. Monthly dojo fees are collected between the *1st and 10th of every month*.
+
+Kindly complete the payment at your earliest convenience to keep training records up to date.
+
+For UPI / Cash payment details or receipt queries, please contact Chief Instructor:
+*Sensei Maruti Jadhav*
+📞 +91 90496 88172
+
+Thank you for your cooperation!
+OSS! 🥋`;
+}
+```
+
+---
+
+## 4. Components to Update
+
+1. **`src/components/AdminPanel.tsx`**:
+   - In the `Overdue Reminders` tab:
+     - Remove the arbitrary stats cards (`OVERDUE STUDENTS (>30 DAYS) 77 of 79`, `EST. OUTSTANDING DUES ₹1,15,500`, `COPY ALL OVERDUE NUMBERS`).
+     - Introduce the Monthly Cycle Manager (1st–10th).
+     - Display current month + unpaid month pills for each student.
+     - Add 1-tap `[Mark Paid]`/`[Unmark]` button for the current month.
+     - Hook WhatsApp button to `generateMonthlyFeeWhatsAppMessage`.
+   - In `Student Directory`:
+     - Keep the individual student WhatsApp reminder button synced with unpaid months.
+2. **`src/components/CoachPortal.tsx`**:
+   - Add monthly fee payment status column next to attendance:
+     - Shows current month status: `[✓ Paid]` or `[Mark Paid]`.
+     - 1-tap updates `paidMonths` in Firestore.
+     - WhatsApp button sends the multi-month reminder message.
+
+---
+
+## 5. Verification & Completed Results
+
+- [x] **Removed Old Cards**: Completely removed the 4 confusing 30-day overdue stat cards shown in `image_ecf9de67.png` (`OVERDUE STUDENTS (>30 DAYS)`, `EST. OUTSTANDING DUES ₹1,15,500 (@₹1,500/mo)`, and `COPY ALL OVERDUE NUMBERS`).
+- [x] **1-Tap Paid Toggles**: 1-tap `[✓ Mark Paid]` button live in both Admin Panel and Coach Portal with real-time Firestore persistence and undo capability.
+- [x] **Multi-Month Dynamic Accumulation**: System evaluates past months and current month (1st–10th cycle); accumulated unpaid months appear with pill badges and can be marked paid individually.
+- [x] **Personalized WhatsApp Reminders**: Mentions exact unpaid months (e.g. `for October 2026, November 2026 (Total: 2 Months Pending)`) without hardcoded rupee sums, directing parents to Chief Instructor Sensei Maruti Jadhav (+91 90496 88172).
+- [x] **Branch Isolation**: Coach Portal is password-protected (`LKCP09`) and isolates students strictly by the 3 official branches (`Manaji Nagar Branch`, `Bhumkar Bridge Branch`, `Jambulwadi Lake View Branch`).
+- [x] **Partner School Exemption**: Students enrolled under Aryan Public School and Vasundhara Preprimary School remain excluded from fee reminders as their fees are school-managed.
+- [x] **Code Quality & Build**: Code compiled cleanly with 0 errors across TypeScript lint and Vite build. Dev server running on port 3000.

@@ -20,11 +20,12 @@ import AdminPanel from './components/AdminPanel';
 import StudentPortal from './components/StudentPortal';
 import ExamCheckIn from './components/ExamCheckIn';
 import PresenceCheckIn from './components/PresenceCheckIn';
+import CoachPortal from './components/CoachPortal';
 import DojoMapEmbed from './components/DojoMapEmbed';
 
 import { Award, ShieldAlert, ShieldCheck, ArrowLeft, RefreshCw, Star, MapPin, Instagram, Youtube, MessageCircle } from 'lucide-react';
 
-type ViewType = 'home' | 'admission' | 'success' | 'admin' | 'student-portal' | 'checkin' | 'examiner-scoring' | 'presence-checkin';
+type ViewType = 'home' | 'admission' | 'success' | 'admin' | 'student-portal' | 'checkin' | 'examiner-scoring' | 'presence-checkin' | 'coach';
 
 export default function App() {
   const [view, setView] = useState<ViewType>('home');
@@ -59,7 +60,9 @@ export default function App() {
         setUrlStudentId(targetStudentId);
       }
 
-      if (hash.startsWith('#admin')) {
+      if (hash.startsWith('#coach')) {
+        setView('coach');
+      } else if (hash.startsWith('#admin')) {
         setView('admin');
       } else if (hash.startsWith('#student-portal') || hash.startsWith('#check-results') || hash.startsWith('#results')) {
         setView('student-portal');
@@ -154,6 +157,10 @@ export default function App() {
       setStudentPortalTab('exam');
       window.location.hash = 'belt-exam';
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (nextView === 'coach') {
+      window.location.hash = 'coach';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setView('coach');
     } else if (nextView === 'presence-checkin') {
       window.location.hash = 'presence-checkin';
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -344,6 +351,13 @@ export default function App() {
         {view === 'presence-checkin' && (
           <main className="flex-grow pt-24 pb-20">
             <PresenceCheckIn onBackToHome={() => navigateTo('home')} />
+          </main>
+        )}
+
+        {/* RENDER VIEW 9: COACH MAT PORTAL (PASSCODE PROTECTED LKCP09) */}
+        {view === 'coach' && (
+          <main className="flex-grow">
+            <CoachPortal onBackToHome={() => navigateTo('home')} />
           </main>
         )}
 

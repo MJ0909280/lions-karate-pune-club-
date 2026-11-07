@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, ShieldAlert, Award, Calendar, Users, Phone, ShieldCheck, ChevronDown, UserCheck, QrCode } from 'lucide-react';
+import { Menu, X, ShieldAlert, Award, Calendar, Users, Phone, ShieldCheck, ChevronDown, UserCheck, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { checkFirestoreConnection } from '../firebase';
 import MartialButton from './MartialButton';
@@ -148,13 +148,13 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
                     className="absolute right-0 mt-2 w-64 rounded-xl bg-slate-950 border border-zinc-800 shadow-2xl p-2 z-50 flex flex-col space-y-1"
                   >
                     <button
-                      onClick={() => { onNavigate('presence-checkin'); setIsPortalsOpen(false); }}
-                      className="flex items-center space-x-2.5 font-heading text-xs text-zinc-300 hover:text-[#FF2A35] hover:bg-[#FF2A35]/10 p-2.5 rounded-lg transition-colors text-left w-full cursor-pointer"
+                      onClick={() => { onNavigate('coach'); setIsPortalsOpen(false); }}
+                      className="flex items-center space-x-2.5 font-heading text-xs text-zinc-300 hover:text-yellow-400 hover:bg-yellow-500/10 p-2.5 rounded-lg transition-colors text-left w-full cursor-pointer"
                     >
-                      <QrCode className="w-4 h-4 text-[#FF2A35] shrink-0 animate-pulse" />
+                      <Lock className="w-4 h-4 text-yellow-500 shrink-0" />
                       <div>
-                        <span className="font-bold text-white block">📲 Daily Class Attendance (QR)</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">Parents Quick Scan</span>
+                        <span className="font-bold text-white block">🥋 Coach Portal (LKCP09)</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">Branch Roll Call & Fees</span>
                       </div>
                     </button>
 
@@ -210,16 +210,16 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
           {/* Mobile hamburger menu toggle with increased accessibility & custom morph indicator */}
           <div className="flex lg:hidden items-center space-x-3">
             <button
-              onClick={() => onNavigate('presence-checkin')}
-              aria-label="Daily Class Attendance QR Portal"
-              title="Daily Class Attendance QR"
-              className={`p-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#FF2A35] transition-colors ${
-                currentView === 'presence-checkin'
-                  ? 'bg-[#FF2A35]/20 border-[#FF2A35] text-[#FF2A35]'
-                  : 'border-zinc-800 bg-slate-900/40 text-zinc-400 hover:text-[#FF2A35] hover:border-zinc-500'
+              onClick={() => onNavigate('coach')}
+              aria-label="Coach Portal"
+              title="Coach Portal (LKCP09)"
+              className={`p-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors ${
+                currentView === 'coach'
+                  ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500'
+                  : 'border-zinc-800 bg-slate-900/40 text-zinc-400 hover:text-yellow-500 hover:border-zinc-500'
               }`}
             >
-              <QrCode className="w-4 h-4 text-[#FF2A35]" />
+              <Lock className="w-4 h-4 text-yellow-500" />
             </button>
 
             <button
@@ -320,15 +320,15 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
                     transition={{ delay: 0.14 }}
                     onClick={() => {
                       setIsOpen(false);
-                      onNavigate('presence-checkin');
+                      onNavigate('coach');
                     }}
                     className={`w-full font-heading font-black text-xs uppercase tracking-widest py-3 px-4 rounded-xl text-center shadow-lg block cursor-pointer transition-all hover:scale-[1.01] ${
-                      currentView === 'presence-checkin'
-                        ? 'bg-[#FF2A35] text-white border border-red-500 shadow-red-500/20'
-                        : 'bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20'
+                      currentView === 'coach'
+                        ? 'bg-yellow-500 text-slate-950 border border-yellow-500 shadow-yellow-500/20'
+                        : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20'
                     }`}
                   >
-                    📲 DAILY CLASS ATTENDANCE (QR)
+                    🥋 COACH PORTAL (LKCP09)
                   </motion.button>
 
                   <motion.button

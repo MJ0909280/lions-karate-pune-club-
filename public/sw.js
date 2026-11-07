@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lions-karate-pwa-v1';
+const CACHE_NAME = 'lions-karate-pwa-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -7,11 +7,12 @@ const ASSETS_TO_CACHE = [
 
 // Install Event
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[Service Worker] Pre-caching offline pages');
       return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -31,7 +32,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event with Stale-While-Revalidate strategy for static resources
+// Fetch Event - Network First for HTML and JS, Cache fallback when offline
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -50,59 +51,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network First for HTML navigation and JS chunks
+  const isHtml = req.mode === 'navigate' || (req.headers.get('accept') && req.headers.get('accept').includes('text/html'));
+  const isScript = req.destination === 'script' || url.pathname.endsWith('.js');
+
+  if (isHtml || isScript) {
+    event.respondWith(
+      fetch(req)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(req).then((cached) => cached || caches.match('/')))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch fresh copy in the background and update the cache
-        fetch(req).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(req, networkResponse);
-            });
-          }
-        }).catch(() => {
-          // Ignore network errors during stale background update
-        });
         return cachedResponse;
       }
-
-      // If not in cache, fetch from network and save to cache
       return fetch(req).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
-        }
-
-        // Cache static files (JS, CSS, images, etc.)
-        const isStaticAsset = 
-          url.pathname.endsWith('.js') || 
-          url.pathname.endsWith('.css') || 
-          url.pathname.endsWith('.png') || 
-          url.pathname.endsWith('.jpg') || 
-          url.pathname.endsWith('.jpeg') || 
-          url.pathname.endsWith('.svg') || 
-          url.pathname.endsWith('.woff') || 
-          url.pathname.endsWith('.woff2') || 
-          url.pathname.endsWith('.json') ||
-          req.destination === 'script' ||
-          req.destination === 'style' ||
-          req.destination === 'image' ||
-          req.destination === 'font' ||
-          url.origin === self.location.origin;
-
-        if (isStaticAsset) {
+        if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(req, responseToCache);
           });
         }
-
         return networkResponse;
-      }).catch((err) => {
-        // Offline fallback for html requests
-        if (req.headers.get('accept') && req.headers.get('accept').includes('text/html')) {
-          return caches.match('/');
-        }
-        throw err;
       });
     })
   );

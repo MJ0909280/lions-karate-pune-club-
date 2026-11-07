@@ -19,7 +19,12 @@ import {
   User
 } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType, checkFirestoreConnection, generateSequentialStudentId } from '../firebase';
-import { Admission, BatchInfo, BATCH_TIMINGS, DOJO_BRANCHES, BELT_LEVELS, Receipt, ReceiptItem, ParentQuery, DisciplineGrades, GradeValue, calculateOverallGrade } from '../types';
+import { 
+  Admission, BatchInfo, BATCH_TIMINGS, DOJO_BRANCHES, BELT_LEVELS, 
+  Receipt, ReceiptItem, ParentQuery, DisciplineGrades, GradeValue, 
+  calculateOverallGrade, getCurrentMonthKey, formatMonthKey, 
+  getShortMonthKey, getUnpaidMonths, generateMonthlyFeeWhatsAppMessage 
+} from '../types';
 import IDCard from './IDCard';
 import ProgressCard from './ProgressCard';
 import SEOVisibilityConsole from './SEOVisibilityConsole';
@@ -305,112 +310,78 @@ export default function AdminPanel() {
   const [adminTab, setAdminTab] = useState<'parent_queries' | 'admissions' | 'batches' | 'site_settings' | 'exams' | 'seo_ai' | 'bills' | 'duplicate_finder' | 'overdue_reminders'>('admissions');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // 30-Day Overdue Reminders State
-  const [overdueSearch, setOverdueSearch] = useState('');
-  const [overdueThresholdDays, setOverdueThresholdDays] = useState<number>(30);
-  const [copiedPhonesMessage, setCopiedPhonesMessage] = useState(false);
-  const [overdueBranchFilter, setOverdueBranchFilter] = useState('all');
+  // Monthly Fee Cycle (1st - 10th of every month) States
+  const [feeSearch, setFeeSearch] = useState('');
+  const [selectedFeeMonth, setSelectedFeeMonth] = useState<string>(getCurrentMonthKey);
+  const [feeBranchFilter, setFeeBranchFilter] = useState('all');
+  const [feeStatusFilter, setFeeStatusFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [feeSavingId, setFeeSavingId] = useState<string | null>(null);
 
-  // Helper to test if a student belongs to excluded institutions
+  // Helper to test if a student belongs to excluded institutions (Aryan / Vasundhara)
   const isExcludedSchool = (schoolName?: string) => {
     if (!schoolName) return false;
     const clean = schoolName.toLowerCase().replace(/[^a-z0-9]/g, '');
     return clean.includes('aryan') || clean.includes('vasundhara');
   };
 
-  // Helper to extract overdue students (>30 days since last payment / admission)
-  const getOverdueStudentsData = () => {
-    const now = Date.now();
-    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+  // 1-Tap Toggle for student monthly fee payment in Firestore
+  const toggleStudentMonthPaid = async (student: Admission, monthKey: string) => {
+    try {
+      setFeeSavingId(student.id);
+      const currentPaid = new Set(student.paidMonths || []);
+      const isCurrentlyPaid = currentPaid.has(monthKey);
+      
+      let updatedPaidMonths: string[];
+      if (isCurrentlyPaid) {
+        currentPaid.delete(monthKey);
+        updatedPaidMonths = Array.from(currentPaid);
+      } else {
+        currentPaid.add(monthKey);
+        updatedPaidMonths = Array.from(currentPaid);
+      }
 
-    return admissions
-      .filter(student => !isExcludedSchool(student.schoolName))
-      .map(student => {
-        const sid = (student.studentId || '').trim().toLowerCase();
-        const sName = (student.fullName || '').trim().toLowerCase();
+      // Update in Firestore
+      const docRef = doc(db, 'admissions', student.id);
+      await updateDoc(docRef, {
+        paidMonths: updatedPaidMonths,
+        feesStatus: updatedPaidMonths.includes(getCurrentMonthKey()) ? 'Paid' : 'Unpaid',
+        lastPaymentDate: !isCurrentlyPaid ? Date.now() : (student.lastPaymentDate || Date.now()),
+        updatedAt: Date.now()
+      });
 
-        // Match receipts for this student
-        const studentReceipts = receipts.filter(r => {
-          const rId = (r.studentId || '').trim().toLowerCase();
-          const rName = (r.studentName || '').trim().toLowerCase();
-          return (sid && rId === sid) || (sName && rName === sName);
-        });
-
-        let latestReceiptTimestamp = 0;
-        studentReceipts.forEach(r => {
-          const t = r.createdAt || (r.date ? new Date(r.date).getTime() : 0);
-          if (t && t > latestReceiptTimestamp) {
-            latestReceiptTimestamp = t;
-          }
-        });
-
-        const explicitLastPayment = (student as any).lastPaymentDate
-          ? (typeof (student as any).lastPaymentDate === 'number'
-              ? (student as any).lastPaymentDate
-              : new Date((student as any).lastPaymentDate).getTime())
-          : 0;
-
-        const registrationTimestamp = student.createdAt || (student as any).updatedAt || 0;
-
-        const lastPaymentTimestamp = Math.max(
-          latestReceiptTimestamp,
-          explicitLastPayment || 0,
-          registrationTimestamp
-        );
-
-        const daysOverdue = lastPaymentTimestamp > 0
-          ? Math.max(0, Math.floor((now - lastPaymentTimestamp) / MS_PER_DAY))
-          : 999;
-
-        return {
-          student,
-          lastPaymentTimestamp,
-          daysOverdue,
-          receiptsCount: studentReceipts.length,
-          lastReceipt: studentReceipts[0] || null
-        };
-      })
-      .filter(item => item.daysOverdue >= overdueThresholdDays)
-      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+      // Update in local state
+      setAdmissions(prev => prev.map(s => {
+        if (s.id === student.id) {
+          return {
+            ...s,
+            paidMonths: updatedPaidMonths,
+            feesStatus: updatedPaidMonths.includes(getCurrentMonthKey()) ? 'Paid' : 'Unpaid',
+            lastPaymentDate: !isCurrentlyPaid ? Date.now() : s.lastPaymentDate
+          };
+        }
+        return s;
+      }));
+    } catch (err) {
+      console.error('Failed to update student monthly fee status:', err);
+      alert('Error updating monthly fee status. Please try again.');
+    } finally {
+      setFeeSavingId(null);
+    }
   };
 
-  // Generate personalized WhatsApp click-to-chat URL
-  const generateWhatsAppLink = (student: Admission, daysOverdue: number, lastPaymentTimestamp: number) => {
-    const rawPhone = student.whatsApp || student.phone || '';
-    const digitsOnly = rawPhone.replace(/[^0-9]/g, '');
-    if (!digitsOnly) return null;
-
-    const fullPhone = digitsOnly.length === 10 ? `91${digitsOnly}` : digitsOnly;
-    const lastDateFormatted = lastPaymentTimestamp > 0
-      ? new Date(lastPaymentTimestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-      : 'Admission Registration';
-
-    const text = `🥋 *Lions Karate Club Pune — Monthly Fee Reminder*\n\n` +
-      `Dear Parent of *${student.fullName}* (Karate Roll ID: *${student.studentId || 'N/A'}*),\n\n` +
-      `This is a friendly reminder that karate monthly fees for *${student.fullName}* were last recorded on *${lastDateFormatted}* (*${daysOverdue} days ago*).\n\n` +
-      `Kindly clear the pending fees at the Dojo or via UPI to keep attendance records and belt training progression up-to-date.\n\n` +
-      `📍 *Branch:* ${student.branch || 'Lions Karate Club Dojo'}\n` +
-      `🥋 *Batch:* ${student.batch || 'Regular Karate Batch'}\n\n` +
-      `Thank you,\n*Sensei Maruti Jadhav*\nLions Karate Club Pune\n📞 Contact: +91 90496 88172`;
-
-    return `https://wa.me/${fullPhone}?text=${encodeURIComponent(text)}`;
-  };
-
-  // Copy all overdue parent phone numbers to clipboard
-  const handleCopyAllOverdueNumbers = () => {
-    const overdueData = getOverdueStudentsData();
-    const phoneNumbers = overdueData
-      .map(o => (o.student.whatsApp || o.student.phone || '').replace(/[^0-9]/g, ''))
-      .filter(p => p.length >= 10);
-
-    const uniquePhones = Array.from(new Set(phoneNumbers));
-    if (uniquePhones.length === 0) {
-      alert('No valid phone numbers found among overdue students.');
+  // Helper to send individual monthly fee reminder with dynamic unpaid months (All Students)
+  const handleSendIndividualFeeReminder = (student: Admission) => {
+    const rawPhone = (student.whatsApp || student.phone || '').replace(/[^0-9]/g, '');
+    if (!rawPhone || rawPhone.length < 10) {
+      alert(`No valid contact number found for ${student.fullName}.`);
       return;
     }
-    navigator.clipboard.writeText(uniquePhones.join(', '));
-    setCopiedPhonesMessage(true);
-    setTimeout(() => setCopiedPhonesMessage(false), 3000);
+
+    const phone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+    const unpaidMonths = getUnpaidMonths(student, selectedFeeMonth);
+    const message = generateMonthlyFeeWhatsAppMessage(student, unpaidMonths);
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   // Parents Online Queries States
@@ -3764,12 +3735,12 @@ export default function AdminPanel() {
                 }`}
               >
                 <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Overdue Reminders</span>
+                <span>Monthly Fees (1st–10th)</span>
                 {(() => {
-                  const count = getOverdueStudentsData().length;
-                  return count > 0 ? (
+                  const pendingCount = admissions.filter(s => !isExcludedSchool(s.schoolName || s.branch) && !s.paidMonths?.includes(selectedFeeMonth)).length;
+                  return pendingCount > 0 ? (
                     <span className="bg-[#FF3B3F] text-white text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-1">
-                      {count}
+                      {pendingCount}
                     </span>
                   ) : null;
                 })()}
@@ -3828,7 +3799,7 @@ export default function AdminPanel() {
                     {adminTab === 'seo_ai' && 'GSC & AI SEO'}
                     {adminTab === 'bills' && 'Fees & Billing'}
                     {adminTab === 'duplicate_finder' && 'Duplicate ID Finder'}
-                    {adminTab === 'overdue_reminders' && 'Overdue Reminders'}
+                    {adminTab === 'overdue_reminders' && 'Monthly Fees (1st–10th)'}
                   </span>
 
                   {adminTab === 'parent_queries' && parentQueries.filter(q => q.status === 'new').length > 0 && (
@@ -3845,7 +3816,7 @@ export default function AdminPanel() {
                     ) : null;
                   })()}
                   {adminTab === 'overdue_reminders' && (() => {
-                    const count = getOverdueStudentsData().length;
+                    const count = admissions.filter(s => !isExcludedSchool(s.schoolName || s.branch) && !s.paidMonths?.includes(selectedFeeMonth)).length;
                     return count > 0 ? (
                       <span className="bg-[#FF3B3F] text-white text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold ml-1.5">
                         {count}
@@ -3999,9 +3970,9 @@ export default function AdminPanel() {
                   >
                     <div className="flex items-center space-x-3">
                       <MessageCircle className={`w-4 h-4 ${adminTab === 'overdue_reminders' ? 'text-red-500' : 'text-zinc-500'}`} />
-                      <span className="font-heading font-bold text-xs uppercase tracking-wider">Overdue Reminders</span>
+                      <span className="font-heading font-bold text-xs uppercase tracking-wider">Monthly Fees (1st–10th)</span>
                       {(() => {
-                        const count = getOverdueStudentsData().length;
+                        const count = admissions.filter(s => !isExcludedSchool(s.schoolName || s.branch) && !s.paidMonths?.includes(selectedFeeMonth)).length;
                         return count > 0 ? (
                           <span className="bg-[#FF3B3F] text-white text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold">
                             {count}
@@ -4834,6 +4805,22 @@ export default function AdminPanel() {
                             title="Issue Pass"
                           >
                             <FileText className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleSendIndividualFeeReminder(student)}
+                            className={`p-2 rounded transition-all cursor-pointer border ${
+                              isExcludedSchool(student.schoolName || student.branch)
+                                ? 'bg-zinc-800/40 text-zinc-500 border-zinc-700/50 hover:text-zinc-300'
+                                : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border-emerald-500/20 hover:scale-105 active:scale-95'
+                            }`}
+                            title={
+                              isExcludedSchool(student.schoolName || student.branch)
+                                ? "School Managed Fees (Aryan / Vasundhara)"
+                                : `Send WhatsApp Monthly Fee Reminder to ${student.fullName}`
+                            }
+                          >
+                            <MessageCircle className="w-4 h-4" />
                           </button>
 
                           <button
@@ -7220,6 +7207,14 @@ export default function AdminPanel() {
                           RE-APPROVE
                         </button>
                       )}
+                      <button
+                        onClick={() => handleSendIndividualFeeReminder(selectedAdmission)}
+                        className="w-full sm:w-auto text-center font-heading font-black text-[10px] uppercase tracking-wider bg-emerald-500/10 hover:bg-emerald-500 border border-emerald-500/30 text-emerald-400 hover:text-slate-950 px-4 py-2.5 rounded transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
+                        title="Send 1-Click WhatsApp Fee Reminder"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Send Fee Reminder</span>
+                      </button>
                     </div>
                   </div>
                 </>
@@ -8826,171 +8821,208 @@ export default function AdminPanel() {
           {/* Header Banner */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-900 pb-5">
             <div className="flex items-start space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0 mt-0.5">
-                <MessageCircle className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 shrink-0 mt-0.5">
+                <Calendar className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-heading font-black text-sm sm:text-base tracking-widest text-white uppercase">
-                    30-Day Overdue Fee Reminders & WhatsApp Dispatcher
+                    Monthly Fee Collection & Tracker (1st – 10th of Every Month)
                   </h3>
-                  <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                    Auto-Filtered
+                  <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                    {formatMonthKey(selectedFeeMonth)}
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400 font-medium normal-case mt-1">
-                  Queries the <strong className="text-white">admissions</strong> database for students whose last payment is older than {overdueThresholdDays} days. Students from <span className="text-yellow-500 font-bold">Aryan Public School</span> and <span className="text-yellow-500 font-bold">Vasundhara Preprimary School</span> are automatically excluded.
+                <p className="text-xs text-zinc-400 font-medium normal-case mt-1 max-w-3xl leading-relaxed">
+                  Dojo training fees are collected between the <strong className="text-white">1st and 10th of every month</strong>. Tap <span className="text-emerald-400 font-bold">"Mark Paid"</span> when payment is received to update student records. Unpaid months accumulate automatically so WhatsApp reminders list all pending months with Chief Instructor contact details.
                 </p>
+                <div className="mt-2 text-[11px] text-zinc-400">
+                  <span className="text-yellow-500 font-bold">Exemption Notice:</span> Students enrolled under partner schools (<span className="text-yellow-400 font-medium">Aryan Public School</span> & <span className="text-yellow-400 font-medium">Vasundhara Preprimary School</span>) are automatically excluded as their fees are collected directly by the schools.
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={handleCopyAllOverdueNumbers}
-                className="font-heading font-bold text-[11px] uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center justify-center space-x-2 border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-850 text-zinc-200 hover:text-white cursor-pointer active:scale-95"
-              >
-                {copiedPhonesMessage ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400 font-bold">Phone Numbers Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Copy All Overdue Numbers</span>
-                  </>
-                )}
-              </button>
+            {/* Quick Filter Info */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="text-right">
+                <span className="text-[10px] text-zinc-400 uppercase font-mono block">Collection Cycle</span>
+                <span className="text-xs font-bold text-emerald-400 font-mono">1st to 10th Monthly</span>
+              </div>
             </div>
           </div>
 
-          {/* Metric Overview Cards */}
+          {/* Month Selector & Controls */}
           {(() => {
-            const overdueData = getOverdueStudentsData();
-            const excludedCount = admissions.filter(s => isExcludedSchool(s.schoolName)).length;
-            const totalWithPhone = overdueData.filter(o => (o.student.whatsApp || o.student.phone)).length;
-            const estimatedOverdueAmount = overdueData.length * 1500;
+            // Generate list of 7 months (4 past, current, 2 upcoming)
+            const now = new Date();
+            const monthOptions: string[] = [];
+            for (let i = -4; i <= 2; i++) {
+              const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+              monthOptions.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+            }
+
+            const currentKey = getCurrentMonthKey();
+            const nonExemptAdmissions = admissions.filter(s => !isExcludedSchool(s.schoolName || s.branch));
+            const excludedCount = admissions.length - nonExemptAdmissions.length;
+            const paidThisMonthCount = nonExemptAdmissions.filter(s => (s.paidMonths || []).includes(selectedFeeMonth)).length;
+            const pendingThisMonthCount = nonExemptAdmissions.length - paidThisMonthCount;
 
             return (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div className="bg-slate-950 border border-red-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/5 rounded-bl-full pointer-events-none" />
-                  <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
-                    Overdue Students (&gt;{overdueThresholdDays} Days)
-                  </span>
-                  <div className="flex items-baseline space-x-2 mt-1.5">
-                    <span className="font-mono text-2xl sm:text-3xl font-black text-red-500 tabular-nums">
-                      {overdueData.length}
+              <>
+                {/* Metric Summary Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  <div className="bg-slate-950 border border-zinc-800 p-4 rounded-xl shadow-lg relative overflow-hidden">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
+                      Eligible Dojo Students
                     </span>
-                    <span className="text-[11px] font-mono text-zinc-500">
-                      of {admissions.length - excludedCount} eligible
+                    <div className="flex items-baseline space-x-2 mt-1.5">
+                      <span className="font-mono text-2xl sm:text-3xl font-black text-white tabular-nums">
+                        {nonExemptAdmissions.length}
+                      </span>
+                      <span className="text-[11px] font-mono text-zinc-500">
+                        active profiles
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950 border border-emerald-950/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
+                      Paid for {getShortMonthKey(selectedFeeMonth)}
                     </span>
+                    <div className="flex items-baseline space-x-2 mt-1.5">
+                      <span className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tabular-nums">
+                        {paidThisMonthCount}
+                      </span>
+                      <span className="text-[11px] font-mono text-emerald-500">
+                        {nonExemptAdmissions.length > 0 ? Math.round((paidThisMonthCount / nonExemptAdmissions.length) * 100) : 0}% cleared
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950 border border-amber-950/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-bl-full pointer-events-none" />
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
+                      Pending for {getShortMonthKey(selectedFeeMonth)}
+                    </span>
+                    <div className="flex items-baseline space-x-2 mt-1.5">
+                      <span className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tabular-nums">
+                        {pendingThisMonthCount}
+                      </span>
+                      <span className="text-[11px] font-mono text-amber-500">
+                        needs reminder
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950 border border-zinc-900 p-4 rounded-xl shadow-lg relative overflow-hidden">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
+                      Exempted School Students
+                    </span>
+                    <div className="flex items-baseline space-x-2 mt-1.5">
+                      <span className="font-mono text-2xl sm:text-3xl font-black text-blue-400 tabular-nums">
+                        {excludedCount}
+                      </span>
+                      <span className="text-[10px] font-mono text-zinc-500">
+                        Aryan & Vasundhara
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-950 border border-emerald-950/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
-                  <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
-                    Exempted Schools Excluded
-                  </span>
-                  <div className="flex items-baseline space-x-2 mt-1.5">
-                    <span className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tabular-nums">
-                      {excludedCount}
-                    </span>
-                    <span className="text-[10px] text-emerald-500/90 font-medium">
-                      Aryan & Vasundhara
-                    </span>
+                {/* Filter & Selector Toolbar */}
+                <div className="bg-slate-950 border border-zinc-900 p-3.5 rounded-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search students by name, Karate Roll ID, parent phone, or branch..."
+                      value={feeSearch}
+                      onChange={(e) => setFeeSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-zinc-900/60 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-yellow-500/50 transition-all"
+                    />
                   </div>
-                </div>
 
-                <div className="bg-slate-950 border border-zinc-900 p-4 rounded-xl shadow-lg relative overflow-hidden">
-                  <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
-                    WhatsApp Reachable
-                  </span>
-                  <div className="flex items-baseline space-x-2 mt-1.5">
-                    <span className="font-mono text-2xl sm:text-3xl font-black text-yellow-500 tabular-nums">
-                      {totalWithPhone}
-                    </span>
-                    <span className="text-[11px] font-mono text-zinc-500">
-                      valid numbers
-                    </span>
-                  </div>
-                </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Month Selector */}
+                    <div className="flex items-center space-x-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs">
+                      <Calendar className="w-3.5 h-3.5 text-yellow-500" />
+                      <span className="text-zinc-500 text-[10px] uppercase font-bold">Month:</span>
+                      <select
+                        value={selectedFeeMonth}
+                        onChange={(e) => setSelectedFeeMonth(e.target.value)}
+                        className="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer"
+                      >
+                        {monthOptions.map(mKey => (
+                          <option key={mKey} value={mKey} className="bg-slate-950 text-white">
+                            {formatMonthKey(mKey)} {mKey === currentKey ? '★ (Current)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div className="bg-slate-950 border border-zinc-900 p-4 rounded-xl shadow-lg relative overflow-hidden">
-                  <span className="text-[10px] text-zinc-400 uppercase font-bold block tracking-wider">
-                    Est. Outstanding Dues
-                  </span>
-                  <div className="flex items-baseline space-x-1 mt-1.5">
-                    <span className="font-mono text-xl sm:text-2xl font-black text-white tabular-nums">
-                      ₹{estimatedOverdueAmount.toLocaleString('en-IN')}
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-500">
-                      (@₹1,500/mo)
-                    </span>
+                    {/* Branch Filter */}
+                    <div className="flex items-center space-x-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs">
+                      <MapPin className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-zinc-500 text-[10px] uppercase font-bold">Branch:</span>
+                      <select
+                        value={feeBranchFilter}
+                        onChange={(e) => setFeeBranchFilter(e.target.value)}
+                        className="bg-transparent text-white text-xs font-medium focus:outline-none cursor-pointer"
+                      >
+                        <option value="all" className="bg-slate-950">All Branches</option>
+                        {DOJO_BRANCHES.map(b => (
+                          <option key={b.id} value={b.name} className="bg-slate-950">{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="flex items-center space-x-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs">
+                      <Filter className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-zinc-500 text-[10px] uppercase font-bold">Status:</span>
+                      <select
+                        value={feeStatusFilter}
+                        onChange={(e) => setFeeStatusFilter(e.target.value as 'all' | 'pending' | 'paid')}
+                        className="bg-transparent text-white text-xs font-medium focus:outline-none cursor-pointer"
+                      >
+                        <option value="all" className="bg-slate-950">All Students</option>
+                        <option value="pending" className="bg-slate-950">Pending Fees Only</option>
+                        <option value="paid" className="bg-slate-950">Paid Fees Only</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </>
             );
           })()}
 
-          {/* Search & Filter Bar */}
-          <div className="bg-slate-950 border border-zinc-900 p-3.5 rounded-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search overdue students by name, Karate Roll ID, school, or parent phone..."
-                value={overdueSearch}
-                onChange={(e) => setOverdueSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-zinc-900/60 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500/50 transition-all"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center space-x-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs">
-                <span className="text-zinc-500 text-[10px] uppercase font-bold">Branch:</span>
-                <select
-                  value={overdueBranchFilter}
-                  onChange={(e) => setOverdueBranchFilter(e.target.value)}
-                  className="bg-transparent text-white text-xs font-medium focus:outline-none cursor-pointer"
-                >
-                  <option value="all" className="bg-slate-950">All Branches</option>
-                  {DOJO_BRANCHES.map(b => (
-                    <option key={b.id} value={b.name} className="bg-slate-950">{b.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs">
-                <span className="text-zinc-500 text-[10px] uppercase font-bold">Threshold:</span>
-                <select
-                  value={overdueThresholdDays}
-                  onChange={(e) => setOverdueThresholdDays(Number(e.target.value))}
-                  className="bg-transparent text-white text-xs font-medium focus:outline-none cursor-pointer"
-                >
-                  <option value={30} className="bg-slate-950">30+ Days Overdue</option>
-                  <option value={45} className="bg-slate-950">45+ Days Overdue</option>
-                  <option value={60} className="bg-slate-950">60+ Days Overdue</option>
-                  <option value={90} className="bg-slate-950">90+ Days Overdue</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Overdue Students Table */}
+          {/* Students Monthly Fee Table */}
           {(() => {
-            const rawOverdue = getOverdueStudentsData();
-            const queryClean = overdueSearch.trim().toLowerCase();
+            const queryClean = feeSearch.trim().toLowerCase();
 
-            const filteredList = rawOverdue.filter(item => {
-              const { student } = item;
-              if (overdueBranchFilter !== 'all' && student.branch !== overdueBranchFilter) {
+            const eligibleList = admissions.filter(student => {
+              // Exclude partner schools
+              if (isExcludedSchool(student.schoolName || student.branch)) {
                 return false;
               }
-              if (!queryClean) return true;
 
+              // Branch filter
+              if (feeBranchFilter !== 'all') {
+                const targetBranchClean = feeBranchFilter.toLowerCase();
+                const studentBranchClean = (student.branch || '').toLowerCase();
+                if (!studentBranchClean.includes(targetBranchClean.replace(' branch', ''))) {
+                  return false;
+                }
+              }
+
+              // Status filter for selected month
+              const isPaid = (student.paidMonths || []).includes(selectedFeeMonth);
+              if (feeStatusFilter === 'paid' && !isPaid) return false;
+              if (feeStatusFilter === 'pending' && isPaid) return false;
+
+              // Search query filter
+              if (!queryClean) return true;
               const nameMatch = (student.fullName || '').toLowerCase().includes(queryClean);
               const idMatch = (student.studentId || '').toLowerCase().includes(queryClean);
               const phoneMatch = (student.phone || '').includes(queryClean) || (student.whatsApp || '').includes(queryClean);
@@ -9000,19 +9032,21 @@ export default function AdminPanel() {
               return nameMatch || idMatch || phoneMatch || schoolMatch || parentMatch;
             });
 
-            if (filteredList.length === 0) {
+            if (eligibleList.length === 0) {
               return (
                 <div className="bg-slate-950 border border-zinc-900 rounded-2xl p-10 text-center space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
                     <CheckCircle2 className="w-6 h-6" />
                   </div>
                   <h4 className="font-heading font-black text-sm uppercase tracking-wider text-white">
-                    No Overdue Students Found
+                    No Matching Students Found
                   </h4>
                   <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                    {overdueSearch 
-                      ? 'No overdue student profiles match your search criteria. Try modifying your search query or threshold.'
-                      : `All active students are current on their fees (or belong to exempted partner schools Aryan Public School and Vasundhara Preprimary School).`}
+                    {feeSearch 
+                      ? 'No student profiles match your search criteria. Try modifying your search query or filters.'
+                      : feeStatusFilter === 'pending'
+                        ? `All students have completed their monthly fee payment for ${formatMonthKey(selectedFeeMonth)}!`
+                        : 'No student records match the selected branch or filter.'}
                   </p>
                 </div>
               );
@@ -9026,20 +9060,19 @@ export default function AdminPanel() {
                       <tr className="bg-zinc-900/60 border-b border-zinc-850 text-zinc-400 uppercase font-heading font-black text-[9px] tracking-widest">
                         <th className="py-4 px-5">Student Bio</th>
                         <th className="py-4 px-5">Karate Roll ID</th>
-                        <th className="py-4 px-5">School / Institution</th>
                         <th className="py-4 px-5">Branch & Batch</th>
                         <th className="py-4 px-5">Parent & Phone</th>
-                        <th className="py-4 px-5">Last Payment & Elapsed</th>
+                        <th className="py-4 px-5 text-center">{formatMonthKey(selectedFeeMonth)} Fee Status</th>
+                        <th className="py-4 px-5">Pending Months History</th>
                         <th className="py-4 px-5 text-right">1-Click WhatsApp Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-900/60 text-xs">
-                      {filteredList.map(({ student, daysOverdue, lastPaymentTimestamp, receiptsCount }) => {
-                        const waUrl = generateWhatsAppLink(student, daysOverdue, lastPaymentTimestamp);
+                      {eligibleList.map((student) => {
+                        const isMonthPaid = (student.paidMonths || []).includes(selectedFeeMonth);
+                        const unpaidMonths = getUnpaidMonths(student, selectedFeeMonth);
+                        const isSaving = feeSavingId === student.id;
                         const rawPhone = student.whatsApp || student.phone || '';
-                        const formattedDate = lastPaymentTimestamp > 0
-                          ? new Date(lastPaymentTimestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : 'Registration Date';
 
                         return (
                           <tr key={student.id} className="hover:bg-zinc-900/30 transition-colors">
@@ -9074,20 +9107,10 @@ export default function AdminPanel() {
                               </span>
                             </td>
 
-                            {/* School / Institution */}
-                            <td className="py-3.5 px-5">
-                              <span className="text-xs text-zinc-300 font-medium block">
-                                {student.schoolName || 'General / Private'}
-                              </span>
-                              <span className="text-[10px] text-zinc-500 block mt-0.5">
-                                Non-exempt institution
-                              </span>
-                            </td>
-
                             {/* Branch & Batch */}
                             <td className="py-3.5 px-5">
                               <span className="text-xs text-zinc-300 font-medium block">
-                                {student.branch || 'Main Dojo'}
+                                {student.branch || 'Manaji Nagar Branch'}
                               </span>
                               <span className="text-[10px] text-zinc-500 block mt-0.5">
                                 {student.batch || 'Regular Karate'}
@@ -9105,49 +9128,101 @@ export default function AdminPanel() {
                               </div>
                             </td>
 
-                            {/* Last Payment & Recency */}
-                            <td className="py-3.5 px-5">
-                              <div className="space-y-1">
-                                <div className="flex items-center space-x-1.5">
-                                  <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
-                                  <span className="text-xs font-mono text-zinc-300 font-bold tabular-nums">
-                                    {formattedDate}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider ${
-                                    daysOverdue >= 60 
-                                      ? 'bg-red-500/20 text-red-400 border border-red-500/30' 
-                                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                                  }`}>
-                                    {daysOverdue} days overdue
-                                  </span>
-                                </div>
+                            {/* Selected Month Status & 1-Tap Toggle */}
+                            <td className="py-3.5 px-5 text-center">
+                              <div className="inline-flex flex-col items-center gap-1.5">
+                                {isMonthPaid ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                      <span>Paid ✓</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      disabled={isSaving}
+                                      onClick={() => toggleStudentMonthPaid(student, selectedFeeMonth)}
+                                      className="text-[9px] font-mono text-zinc-500 hover:text-red-400 underline cursor-pointer transition-colors"
+                                      title="Click to unmark if marked by mistake"
+                                    >
+                                      {isSaving ? 'Saving...' : 'Undo'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => toggleStudentMonthPaid(student, selectedFeeMonth)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-heading font-black uppercase tracking-wider bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40 active:scale-95 transition-all cursor-pointer border border-emerald-500/40"
+                                    title={`Mark ${formatMonthKey(selectedFeeMonth)} as Paid`}
+                                  >
+                                    {isSaving ? (
+                                      <>
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                        <span>Saving...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check className="w-3 h-3" />
+                                        <span>Mark Paid</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             </td>
 
-                            {/* WhatsApp Action */}
-                            <td className="py-3.5 px-5 text-right">
-                              {waUrl ? (
-                                <a
-                                  href={waUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-heading font-black text-[11px] uppercase tracking-wider px-3.5 py-2.5 rounded-xl shadow-md shadow-emerald-950/50 transition-all cursor-pointer whitespace-nowrap"
-                                  title={`Open WhatsApp chat with ${rawPhone}`}
-                                >
-                                  <MessageCircle className="w-4 h-4 fill-white shrink-0" />
-                                  <span>Send WhatsApp</span>
-                                  <ExternalLink className="w-3 h-3 opacity-70 shrink-0" />
-                                </a>
+                            {/* Accumulated Pending Months Tracker */}
+                            <td className="py-3.5 px-5">
+                              {unpaidMonths.length === 0 ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 font-bold">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Up to Date</span>
+                                </span>
                               ) : (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">
+                                      {unpaidMonths.length} {unpaidMonths.length === 1 ? 'Month' : 'Months'} Pending
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {unpaidMonths.map(mKey => (
+                                      <button
+                                        key={mKey}
+                                        type="button"
+                                        onClick={() => toggleStudentMonthPaid(student, mKey)}
+                                        className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                                        title={`Click to mark ${formatMonthKey(mKey)} as Paid`}
+                                      >
+                                        {getShortMonthKey(mKey)} ✕
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 1-Click WhatsApp Action */}
+                            <td className="py-3.5 px-5 text-right">
+                              {rawPhone ? (
                                 <button
                                   type="button"
-                                  disabled
-                                  className="inline-flex items-center space-x-1.5 bg-zinc-900 border border-zinc-800 text-zinc-500 font-heading font-bold text-[10px] uppercase tracking-wider px-3 py-2 rounded-xl cursor-not-allowed whitespace-nowrap"
+                                  onClick={() => handleSendIndividualFeeReminder(student)}
+                                  className={`inline-flex items-center space-x-2 font-heading font-black text-[11px] uppercase tracking-wider px-3.5 py-2 rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
+                                    unpaidMonths.length > 0
+                                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50'
+                                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+                                  }`}
+                                  title={`Send fee reminder WhatsApp for ${student.fullName}`}
                                 >
-                                  <span>No Phone Saved</span>
+                                  <MessageCircle className="w-3.5 h-3.5 fill-current shrink-0" />
+                                  <span>{unpaidMonths.length > 0 ? 'Send Reminder' : 'Send Message'}</span>
+                                  <ExternalLink className="w-3 h-3 opacity-70 shrink-0" />
                                 </button>
+                              ) : (
+                                <span className="inline-block text-[10px] font-mono text-zinc-500 italic">
+                                  No phone saved
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -9159,10 +9234,10 @@ export default function AdminPanel() {
 
                 <div className="p-4 border-t border-zinc-850/60 bg-zinc-950/60 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-2">
                   <span>
-                    Showing <strong className="text-zinc-300">{filteredList.length}</strong> overdue students (&gt;{overdueThresholdDays} days without recorded payment)
+                    Showing <strong className="text-zinc-300">{eligibleList.length}</strong> eligible dojo students for <strong className="text-yellow-500">{formatMonthKey(selectedFeeMonth)}</strong>
                   </span>
                   <span className="font-mono text-[11px]">
-                    Tip: Click "Send WhatsApp" to open WhatsApp Web or the app with pre-filled reminder
+                    Monthly fee collection window: 1st to 10th of every month
                   </span>
                 </div>
               </div>

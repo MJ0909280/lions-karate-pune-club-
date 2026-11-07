@@ -27,6 +27,8 @@ export interface Admission {
   feesStatus?: 'Paid' | 'Unpaid'; // Track student fee status
   schoolName?: string;    // School / college / institution name
   lastCelebratedYear?: number; // The calendar year in which the student's birthday was marked celebrated
+  paidMonths?: string[];   // Array of YYYY-MM formatted strings representing months paid
+  lastPaymentDate?: number;
 }
 
 export interface BranchInfoStatic {
@@ -247,5 +249,106 @@ export interface ParentQuery {
   updatedAt: number;
 }
 
+export interface AttendanceRecord {
+  id?: string;
+  studentId: string;
+  studentName: string;
+  date: string; // YYYY-MM-DD
+  branch: string;
+  status: 'present' | 'absent';
+  markedAt: number;
+  markedBy?: string;
+}
 
+export function isExcludedSchool(schoolName?: string | null): boolean {
+  if (!schoolName) return false;
+  const normalized = schoolName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return normalized.includes('aryan') || normalized.includes('vasundhara');
+}
 
+export function getCurrentMonthKey(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+export function formatMonthKey(key: string): string {
+  const parts = key.split('-');
+  if (parts.length < 2) return key;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const date = new Date(year, month, 1);
+  return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+}
+
+export function getShortMonthKey(key: string): string {
+  const parts = key.split('-');
+  if (parts.length < 2) return key;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const date = new Date(year, month, 1);
+  return date.toLocaleString('default', { month: 'short', year: 'numeric' });
+}
+
+// System starts fee tracking from November 2026 (no fake past months)
+export const FEE_SYSTEM_START_MONTH = '2026-11';
+
+export function getUnpaidMonths(student: Admission, currentKey: string = getCurrentMonthKey()): string[] {
+  const paidSet = new Set(student.paidMonths || []);
+  const unpaid: string[] = [];
+
+  // Parse start year/month (November 2026) and currentKey
+  const [startYear, startMonth] = FEE_SYSTEM_START_MONTH.split('-').map(Number);
+  const [currYear, currMonth] = currentKey.split('-').map(Number);
+
+  // If currentKey is prior to start month, only evaluate currentKey
+  if (currYear < startYear || (currYear === startYear && currMonth < startMonth)) {
+    if (!paidSet.has(currentKey)) {
+      unpaid.push(currentKey);
+    }
+    return unpaid;
+  }
+
+  // Iterate from launch month up to currentKey
+  let y = startYear;
+  let m = startMonth;
+  while (y < currYear || (y === currYear && m <= currMonth)) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    if (!paidSet.has(key)) {
+      unpaid.push(key);
+    }
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+
+  return unpaid;
+}
+
+export function generateMonthlyFeeWhatsAppMessage(student: Admission, unpaidMonths: string[]): string {
+  const formattedMonthNames = unpaidMonths.map(formatMonthKey).join(', ');
+  const monthSummary = unpaidMonths.length === 1 
+    ? `for *${formattedMonthNames}*` 
+    : `for *${formattedMonthNames}* (Total: *${unpaidMonths.length} Months Pending*)`;
+
+  return `🥋 *LIONS KARATE CLUB PUNE*
+*Monthly Dojo Training Fee Reminder*
+
+Dear Parent of *${student.fullName}* (Student ID: *${student.studentId}*),
+🥋 *Branch:* ${student.branch || 'Manaji Nagar Branch'}
+🥋 *Belt Level:* ${student.beltLevel}
+
+This is a gentle reminder that monthly karate training fees ${monthSummary} are pending. Dojo fees are collected between the *1st and 10th of every month*.
+
+Kindly complete the payment at your earliest convenience to maintain continuous training and attendance records.
+
+For UPI / Cash payment details or receipt queries, please contact Chief Instructor:
+*Sensei Maruti Jadhav*
+📞 +91 90496 88172
+
+Thank you for your cooperation!
+OSS! 🥋`;
+}
