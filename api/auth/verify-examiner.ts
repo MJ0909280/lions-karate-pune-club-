@@ -1,12 +1,55 @@
-import {
-  sha256Hex,
-  timingSafeHexCompare,
-  getExpectedExaminerHash,
-  signSessionToken,
-  SESSION_TTL_MS
-} from '../_security';
+import crypto from 'crypto';
+
+const DEFAULT_COACH_HASH = 'c2d3c486c1639485f888cd091f26fe880997ee26d7da1606e201da1e50030b9b';
+const DEFAULT_EXAMINER_HASH = '63b5a875810c220bd1fb892aa160dae94ed508e23a54fefd89026a813f0f6208';
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function isRealSecret(val: string | undefined): val is string {
+  if (!val) return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+  if (/^(SET_|MY_|REPLACE_|CHANGE_|YOUR_|<)/i.test(trimmed)) return false;
+  return true;
+}
+
+function getSessionSecret(): string {
+  if (isRealSecret(process.env.SESSION_SECRET)) {
+    return process.env.SESSION_SECRET.trim();
+  }
+  return crypto
+    .createHmac('sha256', 'lkcp-vercel-session-derive')
+    .update(DEFAULT_COACH_HASH + DEFAULT_EXAMINER_HASH)
+    .digest('hex');
+}
+
+function sha256Hex(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function timingSafeHexCompare(aHex: string, bHex: string): boolean {
+  const aBuf = Buffer.from(aHex, 'hex');
+  const bBuf = Buffer.from(bHex, 'hex');
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function getExpectedExaminerHash(): string {
+  if (isRealSecret(process.env.EXAMINER_PASSCODE)) {
+    return sha256Hex(process.env.EXAMINER_PASSCODE.trim().toUpperCase());
+  }
+  return DEFAULT_EXAMINER_HASH;
+}
+
+function signSessionToken(payload: { role: 'coach' | 'examiner'; name?: string; iat: number; exp: number }): string {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', getSessionSecret())
+    .update(encoded)
+    .digest('base64url');
+  return `${encoded}.${sig}`;
+}
 
 export default function handler(req: any, res: any) {
   if (req.method !== 'POST') {
