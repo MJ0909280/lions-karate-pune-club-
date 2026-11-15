@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '1mb' }));
@@ -30,8 +31,8 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 // In-memory brute-force rate limiter per IP + scope
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_ATTEMPTS = 8;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_ATTEMPTS = 25;
+const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 function getClientIp(req: Request): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -81,15 +82,23 @@ function timingSafeHexCompare(aHex: string, bHex: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
+function isRealSecret(val: string | undefined): val is string {
+  if (!val) return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+  if (/^(SET_|MY_|REPLACE_|CHANGE_|YOUR_|<)/i.test(trimmed)) return false;
+  return true;
+}
+
 function getExpectedCoachHash(): string {
-  const envPass = process.env.COACH_PASSCODE?.trim();
-  if (envPass) return sha256Hex(envPass.toUpperCase());
+  const envPass = process.env.COACH_PASSCODE;
+  if (isRealSecret(envPass)) return sha256Hex(envPass.trim().toUpperCase());
   return DEFAULT_COACH_HASH;
 }
 
 function getExpectedExaminerHash(): string {
-  const envPass = process.env.EXAMINER_PASSCODE?.trim();
-  if (envPass) return sha256Hex(envPass.toUpperCase());
+  const envPass = process.env.EXAMINER_PASSCODE;
+  if (isRealSecret(envPass)) return sha256Hex(envPass.trim().toUpperCase());
   return DEFAULT_EXAMINER_HASH;
 }
 

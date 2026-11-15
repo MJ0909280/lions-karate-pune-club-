@@ -28,15 +28,23 @@ export function timingSafeHexCompare(aHex: string, bHex: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
+function isRealSecret(val: string | undefined): val is string {
+  if (!val) return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+  if (/^(SET_|MY_|REPLACE_|CHANGE_|YOUR_|<)/i.test(trimmed)) return false;
+  return true;
+}
+
 export function getExpectedCoachHash(): string {
-  const envPass = process.env.COACH_PASSCODE?.trim();
-  if (envPass) return sha256Hex(envPass.toUpperCase());
+  const envPass = process.env.COACH_PASSCODE;
+  if (isRealSecret(envPass)) return sha256Hex(envPass.trim().toUpperCase());
   return DEFAULT_COACH_HASH;
 }
 
 export function getExpectedExaminerHash(): string {
-  const envPass = process.env.EXAMINER_PASSCODE?.trim();
-  if (envPass) return sha256Hex(envPass.toUpperCase());
+  const envPass = process.env.EXAMINER_PASSCODE;
+  if (isRealSecret(envPass)) return sha256Hex(envPass.trim().toUpperCase());
   return DEFAULT_EXAMINER_HASH;
 }
 

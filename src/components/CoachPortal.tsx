@@ -99,7 +99,13 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
         body: JSON.stringify({ passcode: passcodeInput.trim() })
       });
 
-      const data = await res.json().catch(() => ({}));
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = {};
+      }
 
       if (res.ok && data.authenticated && data.token) {
         try {
@@ -110,8 +116,12 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
         setIsAuthenticated(true);
         setPasscodeInput('');
         setShowPasscode(false);
+      } else if (data && typeof data.error === 'string' && data.error) {
+        setPasscodeError(data.error);
+      } else if (res.status === 401) {
+        setPasscodeError('Invalid passcode. Access denied.');
       } else {
-        setPasscodeError(data.error || 'Invalid passcode. Access denied.');
+        setPasscodeError(`Authentication service unavailable (HTTP ${res.status}).`);
       }
     } catch {
       setPasscodeError('Unable to reach authentication server. Please try again.');
@@ -473,8 +483,11 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
                 <div className="relative">
                   <input
                     type={showPasscode ? 'text' : 'password'}
+                    name="dojo-coach-code"
                     maxLength={20}
-                    autoComplete="current-password"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
                     value={passcodeInput}
                     onChange={(e) => {
                       setPasscodeInput(e.target.value);

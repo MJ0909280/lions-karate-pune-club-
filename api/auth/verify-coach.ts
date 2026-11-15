@@ -16,17 +16,24 @@ export default function handler(req: any, res: any) {
   const ip = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
   const now = Date.now();
   const entry = attempts.get(ip);
-  if (entry && now <= entry.resetAt && entry.count >= 8) {
+  if (entry && now <= entry.resetAt && entry.count >= 25) {
     return res.status(429).json({
       authenticated: false,
       error: 'Too many failed attempts. Please try again later.'
     });
   }
 
-  const rawPasscode = typeof req.body?.passcode === 'string' ? req.body.passcode.trim().toUpperCase() : '';
+  let body: any = {};
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  } catch {
+    body = {};
+  }
+
+  const rawPasscode = typeof body?.passcode === 'string' ? body.passcode.trim().toUpperCase() : '';
   if (!rawPasscode || rawPasscode.length > 64 || !timingSafeHexCompare(sha256Hex(rawPasscode), getExpectedCoachHash())) {
     if (!entry || now > entry.resetAt) {
-      attempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
+      attempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
     } else {
       entry.count += 1;
     }

@@ -16,14 +16,21 @@ export default function handler(req: any, res: any) {
   const ip = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
   const now = Date.now();
   const entry = attempts.get(ip);
-  if (entry && now <= entry.resetAt && entry.count >= 8) {
+  if (entry && now <= entry.resetAt && entry.count >= 25) {
     return res.status(429).json({
       authenticated: false,
       error: 'Too many failed attempts. Please try again later.'
     });
   }
 
-  const examinerName = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
+  let body: any = {};
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  } catch {
+    body = {};
+  }
+
+  const examinerName = typeof body?.name === 'string' ? body.name.trim().slice(0, 80) : '';
   if (!examinerName) {
     return res.status(400).json({
       authenticated: false,
@@ -31,10 +38,10 @@ export default function handler(req: any, res: any) {
     });
   }
 
-  const rawPasscode = typeof req.body?.passcode === 'string' ? req.body.passcode.trim().toUpperCase() : '';
+  const rawPasscode = typeof body?.passcode === 'string' ? body.passcode.trim().toUpperCase() : '';
   if (!rawPasscode || rawPasscode.length > 64 || !timingSafeHexCompare(sha256Hex(rawPasscode), getExpectedExaminerHash())) {
     if (!entry || now > entry.resetAt) {
-      attempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
+      attempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
     } else {
       entry.count += 1;
     }

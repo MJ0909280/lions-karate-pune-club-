@@ -248,7 +248,13 @@ export default function AttendanceTracker() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ passcode: pinInput.trim() })
       });
-      const data = await res.json().catch(() => ({}));
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = {};
+      }
 
       if (res.ok && data.authenticated && data.token) {
         try {
@@ -259,8 +265,12 @@ export default function AttendanceTracker() {
         setIsUnlocked(true);
         setPinInput('');
         setShowPin(false);
+      } else if (data && typeof data.error === 'string' && data.error) {
+        setPinError(data.error);
+      } else if (res.status === 401) {
+        setPinError('Invalid coach passcode. Access denied.');
       } else {
-        setPinError(data.error || 'Invalid coach passcode. Access denied.');
+        setPinError(`Authentication service unavailable (HTTP ${res.status}).`);
       }
     } catch {
       setPinError('Unable to reach authentication server. Please try again.');
@@ -541,8 +551,11 @@ Thank you.`;
               <div className="relative">
                 <input
                   type={showPin ? 'text' : 'password'}
+                  name="dojo-attendance-code"
                   required
-                  autoComplete="current-password"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
                   placeholder="Enter authorized coach passcode"
                   value={pinInput}
                   onChange={(e) => {
