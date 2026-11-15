@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, triggerWhatsAppNotification, generateSequentialStudentId } from '../firebase';
+import { db, handleFirestoreError, OperationType, generateSequentialStudentId } from '../firebase';
 import { BELT_LEVELS, BATCH_TIMINGS, BatchInfo, DOJO_BRANCHES } from '../types';
 import { saveStudentToLocalCache } from './StudentPortal';
 import { Upload, Camera, FileText, CheckCircle2, ShieldAlert, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
@@ -291,19 +291,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
 
       // Save to local cache for instant sub-millisecond offline lookup
       saveStudentToLocalCache({ id: docRef.id, ...admissionPayload } as any);
-
-      // Trigger automatic background WhatsApp alert to the Shihan admin
-      try {
-        await triggerWhatsAppNotification('admission', {
-          fullName: fullName.trim(),
-          phone: phone.trim(),
-          batch: batch,
-          branch: selectedBranch.name,
-          parentName: parentName.trim() || 'Parent / Legal Guardian'
-        });
-      } catch (waErr) {
-        console.warn("Non-blocking background WhatsApp alert delivery failed:", waErr);
-      }
 
       // Securely log an auto-indexing trigger in Firestore to notify GSC & AI crawlers
       try {

@@ -1,107 +1,386 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Default fallback to block everything
+
+    // Global default-deny safety net
     match /{document=**} {
       allow read, write: if false;
     }
-    
-    // Admin check logic
+
+    // Core helpers
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isStrLen(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptionalStr(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isOptionalNum(data, key) {
+      return !(key in data) || data[key] is int || data[key] is float;
+    }
+
+    function isOptionalBool(data, key) {
+      return !(key in data) || data[key] is bool;
+    }
+
     function isAdmin() {
-      return request.auth != null && 
-             (request.auth.token.email == "writingandreserching18@gmail.com" || 
+      return request.auth != null &&
+             request.auth.token.email_verified == true &&
+             (request.auth.token.email == "writingandreserching18@gmail.com" ||
               request.auth.uid == "79NOBF9MlOeZxsKdUw6I8UjEn2w1");
     }
-    
-    // Admissions collection rules
+
+    // Validation blueprint: Admissions
+    function isValidAdmissionCreate(data) {
+      return data.keys().hasAll(['fullName', 'phone', 'batch', 'beltLevel', 'status', 'createdAt']) &&
+             data.keys().hasOnly([
+               'studentId', 'fullName', 'dob', 'age', 'gender', 'parentName',
+               'phone', 'whatsApp', 'email', 'sendEmailNotification', 'address',
+               'batch', 'beltLevel', 'photoUrl', 'status', 'createdAt', 'updatedAt',
+               'branch', 'coachName', 'feesStatus', 'schoolName', 'termsAccepted',
+               'approvedAt', 'isDirectExamRegistration', 'paidMonths', 'lastPaymentDate', 'joiningDate'
+             ]) &&
+             isStrLen(data.fullName, 1, 120) &&
+             isStrLen(data.phone, 5, 24) &&
+             isStrLen(data.batch, 1, 120) &&
+             isStrLen(data.beltLevel, 1, 80) &&
+             data.createdAt is int &&
+             isOptionalStr(data, 'studentId', 40) &&
+             isOptionalStr(data, 'dob', 32) &&
+             isOptionalNum(data, 'age') &&
+             isOptionalStr(data, 'gender', 32) &&
+             isOptionalStr(data, 'parentName', 120) &&
+             isOptionalStr(data, 'whatsApp', 24) &&
+             isOptionalStr(data, 'email', 160) &&
+             isOptionalBool(data, 'sendEmailNotification') &&
+             isOptionalStr(data, 'address', 500) &&
+             isOptionalStr(data, 'photoUrl', 800000) &&
+             isOptionalNum(data, 'updatedAt') &&
+             isOptionalStr(data, 'branch', 120) &&
+             isOptionalStr(data, 'coachName', 120) &&
+             isOptionalStr(data, 'feesStatus', 32) &&
+             isOptionalStr(data, 'schoolName', 160) &&
+             isOptionalBool(data, 'termsAccepted') &&
+             isOptionalNum(data, 'approvedAt') &&
+             isOptionalBool(data, 'isDirectExamRegistration') &&
+             isOptionalNum(data, 'lastPaymentDate') &&
+             isOptionalNum(data, 'joiningDate') &&
+             (!('paidMonths' in data) || (data.paidMonths is list && data.paidMonths.size() <= 36)) &&
+             (
+               data.status == 'pending' ||
+               (data.status == 'approved' && data.get('isDirectExamRegistration', false) == true)
+             );
+    }
+
+    function isValidFeeUpdate(data) {
+      return data.keys().hasAll(['paidMonths', 'feesStatus', 'updatedAt']) &&
+             data.paidMonths is list &&
+             data.paidMonths.size() <= 36 &&
+             (data.paidMonths.size() == 0 || (data.paidMonths[0] is string && data.paidMonths[0].size() <= 16)) &&
+             data.feesStatus in ['Paid', 'Unpaid'] &&
+             isOptionalNum(data, 'lastPaymentDate') &&
+             data.updatedAt is int;
+    }
+
+    // Validation blueprint: Exams
+    function isValidExamCreate(data) {
+      return data.keys().hasAll(['studentId', 'studentName', 'branch', 'currentBelt', 'targetBelt', 'status', 'createdAt']) &&
+             data.keys().hasOnly([
+               'studentId', 'studentName', 'parentName', 'parentPhone', 'branch',
+               'coachName', 'schoolName', 'currentBelt', 'targetBelt', 'status',
+               'feesStatus', 'examScheduleId', 'examDate', 'venueDetails',
+               'checkedIn', 'checkInTime', 'checkInTimestamp', 'createdAt', 'updatedAt'
+             ]) &&
+             isStrLen(data.studentId, 1, 40) &&
+             isStrLen(data.studentName, 1, 120) &&
+             isStrLen(data.branch, 1, 120) &&
+             isStrLen(data.currentBelt, 1, 80) &&
+             isStrLen(data.targetBelt, 1, 80) &&
+             data.status in ['pending', 'registered'] &&
+             data.createdAt is int &&
+             isOptionalStr(data, 'parentName', 120) &&
+             isOptionalStr(data, 'parentPhone', 24) &&
+             isOptionalStr(data, 'coachName', 120) &&
+             isOptionalStr(data, 'schoolName', 160) &&
+             isOptionalStr(data, 'feesStatus', 32) &&
+             isOptionalStr(data, 'examScheduleId', 128) &&
+             isOptionalStr(data, 'examDate', 64) &&
+             isOptionalStr(data, 'venueDetails', 300) &&
+             isOptionalBool(data, 'checkedIn') &&
+             isOptionalStr(data, 'checkInTime', 40) &&
+             isOptionalNum(data, 'checkInTimestamp') &&
+             isOptionalNum(data, 'updatedAt');
+    }
+
+    function isValidExamCheckInUpdate(data) {
+      return data.checkedIn is bool &&
+             isOptionalStr(data, 'checkInTime', 40) &&
+             isOptionalNum(data, 'checkInTimestamp') &&
+             isOptionalNum(data, 'updatedAt');
+    }
+
+    function isValidExamGradingUpdate(data) {
+      return data.status in ['passed', 'failed'] &&
+             isStrLen(data.grade, 1, 16) &&
+             isStrLen(data.examinerName, 1, 120) &&
+             data.isPublished is bool &&
+             data.disciplinesGrades is map &&
+             data.gradedAt is int &&
+             data.updatedAt is int;
+    }
+
+    // Validation blueprint: Counters
+    function isValidCounter(data) {
+      return data.keys().hasAll(['lastSerial']) &&
+             data.keys().hasOnly(['lastSerial', 'updatedAt']) &&
+             data.lastSerial is int &&
+             data.lastSerial >= 1 &&
+             data.lastSerial <= 999999 &&
+             isOptionalNum(data, 'updatedAt');
+    }
+
+    // Validation blueprint: Exam toggle settings
+    function isValidExamSettings(data) {
+      return data.keys().hasAll(['isExamActive', 'updatedAt']) &&
+             data.keys().hasOnly(['isExamActive', 'updatedAt']) &&
+             data.isExamActive is bool &&
+             data.updatedAt is int;
+    }
+
+    // Validation blueprint: Attendance
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'date', 'status', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'studentId', 'studentName', 'date', 'status',
+               'coachName', 'batchName', 'checkInTime', 'checkInTimestamp',
+               'notes', 'createdAt', 'updatedAt'
+             ]) &&
+             isStrLen(data.id, 1, 128) &&
+             isStrLen(data.studentId, 1, 40) &&
+             isStrLen(data.studentName, 1, 120) &&
+             isStrLen(data.date, 4, 32) &&
+             data.status in ['Present', 'Absent'] &&
+             data.updatedAt is int &&
+             isOptionalStr(data, 'coachName', 120) &&
+             isOptionalStr(data, 'batchName', 120) &&
+             isOptionalStr(data, 'checkInTime', 40) &&
+             isOptionalNum(data, 'checkInTimestamp') &&
+             isOptionalStr(data, 'notes', 300) &&
+             isOptionalNum(data, 'createdAt');
+    }
+
+    // Validation blueprint: Attendance Logs
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['studentId', 'studentName', 'date', 'status']) &&
+             data.keys().hasOnly([
+               'studentId', 'studentName', 'date', 'branch', 'batch',
+               'beltLevel', 'status', 'markedBy', 'timestamp', 'updatedAt'
+             ]) &&
+             isStrLen(data.studentId, 1, 40) &&
+             isStrLen(data.studentName, 1, 120) &&
+             isStrLen(data.date, 4, 32) &&
+             data.status in ['Present', 'present', 'absent', 'unmarked'] &&
+             isOptionalStr(data, 'branch', 120) &&
+             isOptionalStr(data, 'batch', 120) &&
+             isOptionalStr(data, 'beltLevel', 80) &&
+             isOptionalStr(data, 'markedBy', 60) &&
+             isOptionalNum(data, 'updatedAt');
+    }
+
+    // Validation blueprint: Parent Queries
+    function isValidParentQuery(data) {
+      return data.keys().hasAll(['parentName', 'phone', 'queryType', 'message', 'status', 'createdAt']) &&
+             data.keys().hasOnly([
+               'parentName', 'childName', 'phone', 'email',
+               'queryType', 'message', 'status', 'createdAt', 'updatedAt'
+             ]) &&
+             isStrLen(data.parentName, 1, 120) &&
+             isStrLen(data.phone, 5, 24) &&
+             isStrLen(data.queryType, 1, 80) &&
+             isStrLen(data.message, 1, 2000) &&
+             data.status == 'new' &&
+             data.createdAt is int &&
+             isOptionalStr(data, 'childName', 120) &&
+             isOptionalStr(data, 'email', 160) &&
+             isOptionalNum(data, 'updatedAt');
+    }
+
+    // Validation blueprint: SEO Indexing Logs
+    function isValidSeoLog(data) {
+      return data.keys().hasAll(['studentName', 'createdAt', 'status']) &&
+             data.keys().hasOnly([
+               'studentId', 'studentName', 'createdAt', 'eventType',
+               'sitemapUrl', 'status', 'notifiedEngines'
+             ]) &&
+             isStrLen(data.studentName, 1, 120) &&
+             isStrLen(data.status, 1, 40) &&
+             data.createdAt is int &&
+             isOptionalStr(data, 'studentId', 40) &&
+             isOptionalStr(data, 'eventType', 120) &&
+             isOptionalStr(data, 'sitemapUrl', 300) &&
+             (!('notifiedEngines' in data) || (data.notifiedEngines is list && data.notifiedEngines.size() <= 10));
+    }
+
+    // Admissions collection
     match /admissions/{admissionId} {
-      // Anyone can submit their admission request, or admin can directly insert records
-      allow create: if true;
-                     
-      // Allow fetching single admission by ID (for success page and generated ID card view)
-      allow get: if true;
-      
-      // Allow parent searches by Roll ID to find specific students
+      allow create: if isValidId(admissionId) && (isAdmin() || isValidAdmissionCreate(incoming()));
+      allow get: if isValidId(admissionId);
       allow list: if true;
-      
-      // Only admin can approve, reject, update, or delete records
-      allow update, delete: if isAdmin();
+      allow update: if isValidId(admissionId) && (
+        isAdmin() ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['paidMonths', 'feesStatus', 'lastPaymentDate', 'updatedAt']) &&
+          isValidFeeUpdate(incoming())
+        )
+      );
+      allow delete: if isValidId(admissionId) && isAdmin();
     }
-    
-    // Batches collection rules
+
+    // Batches collection
     match /batches/{batchId} {
-      // Anyone can view training batches on lander and form
-      allow read: if true;
-      
-      // Only authorized admin can manage (create, update, delete) batches
-      allow write: if isAdmin();
+      allow get: if isValidId(batchId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(batchId) && isAdmin();
     }
-    
-    // Exams collection rules
+
+    // Exams collection
     match /exams/{examId} {
-      allow create, update: if true;
-      allow get, list: if true;
-      allow delete: if isAdmin();
+      allow create: if isValidId(examId) && (isAdmin() || isValidExamCreate(incoming()));
+      allow get: if isValidId(examId);
+      allow list: if true;
+      allow update: if isValidId(examId) && (
+        isAdmin() ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['checkedIn', 'checkInTime', 'checkInTimestamp', 'updatedAt']) &&
+          isValidExamCheckInUpdate(incoming())
+        ) ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['disciplinesGrades', 'grade', 'status', 'isPublished', 'examinerName', 'gradedAt', 'updatedAt']) &&
+          isValidExamGradingUpdate(incoming())
+        )
+      );
+      allow delete: if isValidId(examId) && isAdmin();
     }
-    
-    // Exam Schedules collection rules
+
+    // Exam Schedules collection
     match /exam_schedules/{scheduleId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow get: if isValidId(scheduleId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(scheduleId) && isAdmin();
     }
-    
-    // Settings collection rules
+
+    // Settings: Deprecated WhatsApp integration document (disabled)
+    match /settings/whatsapp {
+      allow read, write: if false;
+    }
+
+    // Settings: Video showcase configuration
+    match /settings/video {
+      allow get: if true;
+      allow list, create, update, delete: if isAdmin();
+    }
+
+    // Settings: Connection test ping
+    match /settings/connection_ping_test {
+      allow get: if true;
+      allow list, create, update, delete: if isAdmin();
+    }
+
+    // Settings: Exam day mode flag
+    match /settings/exam_settings {
+      allow get: if true;
+      allow list, delete: if isAdmin();
+      allow create, update: if isAdmin() || isValidExamSettings(incoming());
+    }
+
+    // Settings: Other modular settings (counters_YYYY public increment only; everything else admin-only)
     match /settings/{settingId} {
-      // Allow public get and list queries to sync site configurations dynamically
-      allow read: if true;
-      // Allow public write specifically for student ID counters, admin for everything else
-      allow write: if isAdmin() || settingId.matches('^counters_.*');
+      allow get: if isValidId(settingId) && (isAdmin() || settingId.matches('^counters_[0-9]{4}$'));
+      allow list, delete: if isAdmin();
+      allow create: if isValidId(settingId) && (isAdmin() || (settingId.matches('^counters_[0-9]{4}$') && isValidCounter(incoming())));
+      allow update: if isValidId(settingId) && (
+        isAdmin() ||
+        (
+          settingId.matches('^counters_[0-9]{4}$') &&
+          isValidCounter(incoming()) &&
+          incoming().lastSerial >= existing().lastSerial
+        )
+      );
     }
-    
-    // Attendance collection rules
+
+    // Attendance collection
     match /attendance/{attendanceId} {
-      // Allow read and write for coaches (managed via PIN client-side) and administrator
-      allow read, write: if true;
+      allow get: if isValidId(attendanceId);
+      allow list: if true;
+      allow create: if isValidId(attendanceId) && (isAdmin() || isValidAttendance(incoming()));
+      allow update: if isValidId(attendanceId) && (
+        isAdmin() ||
+        (
+          isValidAttendance(incoming()) &&
+          incoming().studentId == existing().studentId &&
+          incoming().date == existing().date
+        )
+      );
+      allow delete: if isValidId(attendanceId) && isAdmin();
     }
 
-    // Attendance logs collection rules (for parent QR check-in)
+    // Attendance logs collection
     match /attendance_logs/{logId} {
-      allow read, create: if true;
-      allow update, delete: if isAdmin();
+      allow get: if isValidId(logId);
+      allow list: if true;
+      allow create: if isValidId(logId) && (isAdmin() || isValidAttendanceLog(incoming()));
+      allow update: if isValidId(logId) && (
+        isAdmin() ||
+        (
+          isValidAttendanceLog(incoming()) &&
+          incoming().studentId == existing().studentId &&
+          incoming().date == existing().date
+        )
+      );
+      allow delete: if isValidId(logId) && isAdmin();
     }
 
-    // Students collection rules
+    // Legacy Students collection
     match /students/{studentId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow get: if isValidId(studentId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(studentId) && isAdmin();
     }
 
-    // Candidates collection rules
+    // Legacy Candidates collection
     match /candidates/{candidateId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow get: if isValidId(candidateId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(candidateId) && isAdmin();
     }
 
-    // SEO Indexing logs collection rules
+    // SEO Indexing logs collection
     match /seo_indexing_logs/{logId} {
-      allow create: if true;
-      allow read, write: if isAdmin();
+      allow create: if isValidId(logId) && (isAdmin() || isValidSeoLog(incoming()));
+      allow get, list, update, delete: if isAdmin();
     }
 
-    // Receipts collection rules
+    // Receipts collection (strictly Admin-only PII & billing data)
     match /receipts/{receiptId} {
-      // Allow parents to search receipts for student results
-      allow get, list: if true;
-      // Only authorized admin is allowed to create, update or delete receipts
-      allow create, update, delete: if isAdmin();
+      allow get, list, create, update, delete: if isAdmin();
     }
 
-    // Parent Queries collection rules
+    // Parent Queries collection
     match /parent_queries/{queryId} {
-      // Anyone can submit a query online
-      allow create: if true;
-      // Only admin can read, update, or delete parent queries
+      allow create: if isValidId(queryId) && (isAdmin() || isValidParentQuery(incoming()));
       allow get, list, update, delete: if isAdmin();
     }
   }

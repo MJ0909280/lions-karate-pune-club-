@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Phone, Mail, Clock, ChevronDown, HelpCircle, Send, CheckCircle2, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, addDoc } from 'firebase/firestore';
-import { db, triggerWhatsAppNotification } from '../firebase';
+import { db } from '../firebase';
 
 export default function Contact() {
   const [openFaqId, setOpenFaqId] = useState<number | null>(null);
@@ -43,14 +43,6 @@ export default function Contact() {
       };
 
       await addDoc(collection(db, 'parent_queries'), queryPayload);
-
-      // Trigger automatic real-time WhatsApp alert
-      await triggerWhatsAppNotification('inquiry', {
-        fullName: parentName.trim(),
-        phone: phone.trim(),
-        batch: queryType,
-        branch: `Child: ${childName.trim() || 'N/A'}. Msg: ${message.trim().substring(0, 50)}`
-      });
 
       setSubmitSuccess(true);
       setParentName('');

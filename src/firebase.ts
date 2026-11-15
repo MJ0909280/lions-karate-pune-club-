@@ -115,60 +115,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-export async function triggerWhatsAppNotification(type: 'admission' | 'inquiry', data: {
-  fullName: string;
-  phone: string;
-  batch?: string;
-  branch?: string;
-  parentName?: string;
-}) {
-  try {
-    const snap = await getDoc(doc(db, 'settings', 'whatsapp'));
-    if (!snap.exists()) {
-      console.log("WhatsApp notifications: No configurations loaded from settings/whatsapp.");
-      return;
-    }
-    const config = snap.data();
-    if (!config.enabled || !config.phoneNumber || !config.apiKey) {
-      console.log("WhatsApp notifications: Auto-alerts are disabled or configuration is incomplete.", config);
-      return;
-    }
-
-    // Clean up phone number
-    const cleanPhone = config.phoneNumber.replace(/[+\s-]/g, '');
-
-    // Format professional WhatsApp message with emojis and bullet points
-    let message = "";
-    if (type === 'admission') {
-      message = `🥋 LIONS KARATE CLUB PUNE 🥋\n\n` +
-                `🔥 New Student Admission Form Filed! 🔥\n\n` +
-                `👤 Name: ${data.fullName}\n` +
-                `📞 Phone: ${data.phone}\n` +
-                `📅 Batch: ${data.batch || 'Not Specified'}\n` +
-                `🏢 Branch: ${data.branch || 'Not Specified'}\n` +
-                `👪 Parent/Guardian: ${data.parentName || 'Not Specified'}\n\n` +
-                `A new student registry has been added to some database lists! Please administrative login to manage and assign Shihan belts! 🏆`;
-    } else {
-      message = `🥋 LIONS KARATE CLUB PUNE 🥋\n\n` +
-                `💡 New Quick Practice Inquiry Recieved! 💡\n\n` +
-                `👤 name: ${data.fullName}\n` +
-                `📞 Phone: ${data.phone}\n` +
-                `📅 Age Batch: ${data.batch || 'Not Specified'}\n` +
-                `🏢 Branch Dojo: ${data.branch || 'Not Specified'}\n\n` +
-                `Coaches please connect immediately to organize trial sessions! 🐆`;
-    }
-
-    const encodedMessage = encodeURIComponent(message);
-    const callmebotUrl = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${encodedMessage}&apikey=${config.apiKey}`;
-
-    // Simple GET call to CallMeBot, mode 'no-cors' to avoid browser origins blocking background triggers
-    await fetch(callmebotUrl, { mode: 'no-cors' });
-    console.log(`WhatsApp background notification dispatched successfully via CallMeBot!`);
-  } catch (error) {
-    console.warn("Failed sending WhatsApp automatic alert:", error);
-  }
-}
-
 /**
  * Generates a unique, strictly sequential student ID (e.g. LKCP-2026-142)
  * using a centralized atomic transaction in Firestore.

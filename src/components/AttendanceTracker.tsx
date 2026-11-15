@@ -28,7 +28,9 @@ import {
   Users,
   Grid,
   Filter,
-  CheckSquare
+  CheckSquare,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const DEFAULT_STUDENT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23111'><rect width='100' height='100' fill='%231a1a1a'/><circle cx='50' cy='35' r='14' fill='%23c9a96e'/><path d='M50 50 L35 75 L30 73 L42 53 L38 50 L30 55 L28 50 L40 42 Z' fill='%23fff'/><path d='M50 50 L65 80 L72 82 L58 55 L65 48 L75 52 L78 47 L60 40 Z' fill='%23fff'/><path d='M42 45 H58 V49 H42 Z' fill='%239B1B20'/></svg>";
@@ -100,12 +102,38 @@ const playKarateBell = () => {
 };
 
 export default function AttendanceTracker() {
-  // Authentication & Access state
-  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
-    return safeLocalStorage.getItem('lkcp_coach_unlocked') === 'true';
-  });
+  // Authentication & Access state (verified via backend /api/auth/session)
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
   const [pinInput, setPinInput] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [pinError, setPinError] = useState('');
+  const [verifyingPin, setVerifyingPin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const validateSession = async () => {
+      try {
+        const token = sessionStorage.getItem('lkcp_coach_token');
+        if (!token) return;
+        const res = await fetch('/api/auth/session', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.role === 'coach') {
+            setIsUnlocked(true);
+            return;
+          }
+        }
+        sessionStorage.removeItem('lkcp_coach_token');
+      } catch {
+        // Ignore network errors
+      }
+    };
+    validateSession();
+    return () => { active = false; };
+  }, []);
 
   // Selected filters
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -207,24 +235,48 @@ export default function AttendanceTracker() {
     return () => unsubscribe();
   }, [isUnlocked, selectedDate]);
 
-  // Coach PIN Unlock check
-  const handlePinUnlockSubmit = (e: React.FormEvent) => {
+  // Coach Passcode Unlock check (Server-Side Verified)
+  const handlePinUnlockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!pinInput.trim()) return;
     setPinError('');
-    const inputUpper = pinInput.trim().toUpperCase();
-    const validCoachPins = ['LKCP-COACH-2026', 'COACH2026', 'EXAM2026', 'SENSI2026', '2026', '1234', '0000', 'LIONS2026', 'MARUTI', 'SHIVRAJ', 'LKCP'];
-    
-    if (validCoachPins.includes(inputUpper) || inputUpper.length >= 4) {
-      setIsUnlocked(true);
-      safeLocalStorage.setItem('lkcp_coach_unlocked', 'true');
-      setPinInput('');
-    } else {
-      setPinError('Incorrect Coach Access PIN! Enter 1234 or LKCP-COACH-2026.');
+    setVerifyingPin(true);
+
+    try {
+      const res = await fetch('/api/auth/verify-coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: pinInput.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.authenticated && data.token) {
+        try {
+          sessionStorage.setItem('lkcp_coach_token', data.token);
+        } catch {
+          // Ignore storage warnings
+        }
+        setIsUnlocked(true);
+        setPinInput('');
+        setShowPin(false);
+      } else {
+        setPinError(data.error || 'Invalid coach passcode. Access denied.');
+      }
+    } catch {
+      setPinError('Unable to reach authentication server. Please try again.');
+    } finally {
+      setVerifyingPin(false);
     }
   };
 
   const handleLockCoachTab = () => {
     setIsUnlocked(false);
+    setShowPin(false);
+    try {
+      sessionStorage.removeItem('lkcp_coach_token');
+    } catch {
+      // Ignore storage warnings
+    }
     safeLocalStorage.removeItem('lkcp_coach_unlocked');
   };
 
@@ -488,19 +540,25 @@ Thank you.`;
             <form onSubmit={handlePinUnlockSubmit} className="space-y-4 pt-2">
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   required
-                  placeholder="Enter Coach Access PIN"
+                  autoComplete="current-password"
+                  placeholder="Enter authorized coach passcode"
                   value={pinInput}
                   onChange={(e) => {
                     setPinInput(e.target.value);
                     setPinError('');
                   }}
-                  className="w-full bg-slate-950 border border-zinc-850 focus:border-red-550 pl-4 pr-10 py-3 text-sm font-mono tracking-widest text-white text-center rounded-xl focus:outline-none transition-all uppercase placeholder:text-zinc-700"
+                  className="w-full bg-slate-950 border border-zinc-850 focus:border-red-550 pl-4 pr-10 py-3 text-sm font-mono tracking-widest text-white text-center rounded-xl focus:outline-none transition-all uppercase placeholder:text-zinc-700 placeholder:normal-case placeholder:tracking-normal"
                 />
-                <div className="absolute right-3.5 inset-y-0 flex items-center text-zinc-600">
-                  <Lock className="w-4 h-4" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPin(prev => !prev)}
+                  aria-label={showPin ? 'Hide passcode' : 'Show passcode'}
+                  className="absolute right-3 inset-y-0 flex items-center text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                >
+                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
 
               {pinError && (
@@ -512,16 +570,17 @@ Thank you.`;
 
               <button
                 type="submit"
-                className="w-full py-3 bg-[#FF3B3F] hover:bg-red-500 text-white font-heading font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+                disabled={verifyingPin || !pinInput.trim()}
+                className="w-full py-3 bg-[#FF3B3F] hover:bg-red-500 disabled:opacity-50 text-white font-heading font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <span>Unlock Attendance Portal</span>
+                <span>{verifyingPin ? 'Verifying...' : 'Unlock Attendance Portal'}</span>
                 <Unlock className="w-3.5 h-3.5" />
               </button>
             </form>
 
             <div className="bg-slate-950/50 rounded-xl p-3 text-[10px] text-zinc-500 leading-relaxed text-left border border-zinc-950">
               <span className="font-black text-zinc-400 uppercase tracking-wider block mb-0.5">Note:</span>
-              Use the customizable Coach Access PIN provided by the Chief Trainer during setup to execute daily class updates.
+              Enter the authorized Coach Passcode provided by the Chief Instructor to record daily class attendance.
             </div>
           </div>
         </div>

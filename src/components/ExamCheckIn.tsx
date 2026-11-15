@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, addDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Search, UserCheck, Calendar, ShieldCheck, ArrowLeft, Trophy, MapPin, Sparkles, Award, Lock, Check, Edit2, User, Star } from 'lucide-react';
+import { CheckCircle2, Search, UserCheck, Calendar, ShieldCheck, ArrowLeft, Trophy, MapPin, Sparkles, Award, Lock, Check, Edit2, User, Star, Eye, EyeOff } from 'lucide-react';
 import { DisciplineGrades, GradeValue, calculateOverallGrade } from '../types';
 
 interface ExamCheckInProps {
@@ -66,11 +66,40 @@ export default function ExamCheckIn({ onBackToHome, initialTab = 'checkin' }: Ex
       localStorage.setItem('is_exam_day_active', String(newStatus));
     }
   };
-  // Examiner Login State
+  // Examiner Login State (verified via backend /api/auth/session)
   const [examinerName, setExaminerName] = useState(() => localStorage.getItem('examiner_name') || '');
   const [examinerPin, setExaminerPin] = useState('');
-  const [isExaminerUnlocked, setIsExaminerUnlocked] = useState(() => localStorage.getItem('examiner_unlocked') === 'true');
+  const [showExaminerPin, setShowExaminerPin] = useState(false);
+  const [isExaminerUnlocked, setIsExaminerUnlocked] = useState(false);
+  const [examinerAuthLoading, setExaminerAuthLoading] = useState(false);
   const [examinerAuthError, setExaminerAuthError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const validateExaminerSession = async () => {
+      try {
+        const token = sessionStorage.getItem('lkcp_examiner_token');
+        if (!token) return;
+        const res = await fetch('/api/auth/session', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.role === 'examiner') {
+            setIsExaminerUnlocked(true);
+            if (data.name) setExaminerName(data.name);
+            return;
+          }
+        }
+        sessionStorage.removeItem('lkcp_examiner_token');
+      } catch {
+        // Ignore network errors
+      }
+    };
+    validateExaminerSession();
+    return () => { active = false; };
+  }, []);
 
   // Examiner Grading Candidate State
   const [gradingSearch, setGradingSearch] = useState('');
@@ -328,8 +357,8 @@ export default function ExamCheckIn({ onBackToHome, initialTab = 'checkin' }: Ex
     }
   };
 
-  // Examiner Login Handle
-  const handleExaminerLogin = (e: React.FormEvent) => {
+  // Examiner Login Handle (Server-Side Verified)
+  const handleExaminerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setExaminerAuthError('');
     const trimmedName = examinerName.trim();
@@ -345,21 +374,37 @@ export default function ExamCheckIn({ onBackToHome, initialTab = 'checkin' }: Ex
       return;
     }
 
-    // Verify Examiner Access Password
-    if (rawPin !== 'Lions@9049' && rawPin.toUpperCase() !== 'LIONS@9049') {
-      setExaminerAuthError("Incorrect Examiner Access Password. Access denied.");
-      return;
-    }
+    setExaminerAuthLoading(true);
+    try {
+      const res = await fetch('/api/auth/verify-examiner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmedName, passcode: rawPin })
+      });
+      const data = await res.json().catch(() => ({}));
 
-    localStorage.setItem('examiner_name', trimmedName);
-    localStorage.setItem('examiner_unlocked', 'true');
-    setIsExaminerUnlocked(true);
+      if (res.ok && data.authenticated && data.token) {
+        localStorage.setItem('examiner_name', trimmedName);
+        sessionStorage.setItem('lkcp_examiner_token', data.token);
+        setIsExaminerUnlocked(true);
+        setExaminerPin('');
+        setShowExaminerPin(false);
+      } else {
+        setExaminerAuthError(data.error || "Incorrect Examiner Access Password. Access denied.");
+      }
+    } catch {
+      setExaminerAuthError("Unable to reach authentication server. Please try again.");
+    } finally {
+      setExaminerAuthLoading(false);
+    }
   };
 
   const handleExaminerLogout = () => {
+    sessionStorage.removeItem('lkcp_examiner_token');
     localStorage.removeItem('examiner_unlocked');
     setIsExaminerUnlocked(false);
     setSelectedGradingStudent(null);
+    setShowExaminerPin(false);
   };
 
   // Select student for grading
@@ -827,14 +872,25 @@ export default function ExamCheckIn({ onBackToHome, initialTab = 'checkin' }: Ex
                   <label className="text-[10px] font-heading font-black uppercase tracking-wider text-zinc-400">
                     Examiner Access Password
                   </label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="ENTER ACCESS PASSWORD"
-                    value={examinerPin}
-                    onChange={(e) => setExaminerPin(e.target.value)}
-                    className="w-full bg-slate-950 border border-zinc-800 text-sm font-mono text-white p-3 rounded-xl focus:outline-none focus:border-yellow-500 tracking-widest text-center placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showExaminerPin ? 'text' : 'password'}
+                      required
+                      autoComplete="current-password"
+                      placeholder="Enter examiner access password"
+                      value={examinerPin}
+                      onChange={(e) => setExaminerPin(e.target.value)}
+                      className="w-full bg-slate-950 border border-zinc-800 text-sm font-mono text-white pl-3 pr-10 py-3 rounded-xl focus:outline-none focus:border-yellow-500 tracking-widest text-center placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowExaminerPin(prev => !prev)}
+                      aria-label={showExaminerPin ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                    >
+                      {showExaminerPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 {examinerAuthError && (
@@ -845,9 +901,10 @@ export default function ExamCheckIn({ onBackToHome, initialTab = 'checkin' }: Ex
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 bg-gradient-to-r from-yellow-500 to-amber-500 text-slate-950 font-heading font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg hover:shadow-yellow-500/20 active:scale-98 cursor-pointer"
+                  disabled={examinerAuthLoading}
+                  className="w-full py-3.5 bg-gradient-to-r from-yellow-500 to-amber-500 disabled:opacity-50 text-slate-950 font-heading font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg hover:shadow-yellow-500/20 active:scale-98 cursor-pointer"
                 >
-                  Unlock Examiner Portal
+                  {examinerAuthLoading ? 'Verifying...' : 'Unlock Examiner Portal'}
                 </button>
               </form>
             </motion.div>

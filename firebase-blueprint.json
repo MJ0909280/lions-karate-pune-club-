@@ -2,52 +2,69 @@
   "entities": {
     "admission": {
       "title": "Admission",
-      "description": "Represents a student admission application to the karate club.",
+      "description": "Represents a student admission application and active dojo membership record.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Formated student ID LKCP-YYYY-XXX" },
-        "fullName": { "type": "string", "description": "Full name of the student" },
-        "dob": { "type": "string", "description": "Date of birth" },
+        "id": { "type": "string", "maxLength": 128, "description": "Optional document ID" },
+        "studentId": { "type": "string", "maxLength": 40, "description": "Formatted student ID LKCP-YYYY-XXX" },
+        "fullName": { "type": "string", "maxLength": 120, "description": "Full name of the student" },
+        "dob": { "type": "string", "maxLength": 32, "description": "Date of birth" },
         "age": { "type": "number", "description": "Age of the student" },
-        "gender": { "type": "string", "description": "Gender of the student" },
-        "parentName": { "type": "string", "description": "Parent or guardian name" },
-        "phone": { "type": "string", "description": "Contact phone number" },
-        "whatsApp": { "type": "string", "description": "WhatsApp contact number" },
-        "email": { "type": "string", "description": "Email address" },
-        "address": { "type": "string", "description": "Physical address" },
-        "batch": { "type": "string", "description": "Selected batch time slot" },
-        "beltLevel": { "type": "string", "description": "Current belt level" },
-        "photoUrl": { "type": "string", "description": "Base64 encoded or direct URL of the uploaded image" },
+        "gender": { "type": "string", "maxLength": 32, "description": "Gender of the student" },
+        "parentName": { "type": "string", "maxLength": 120, "description": "Parent or guardian name" },
+        "phone": { "type": "string", "maxLength": 24, "description": "Contact phone number" },
+        "whatsApp": { "type": "string", "maxLength": 24, "description": "WhatsApp contact number" },
+        "email": { "type": "string", "maxLength": 160, "description": "Email address" },
+        "address": { "type": "string", "maxLength": 500, "description": "Physical address" },
+        "batch": { "type": "string", "maxLength": 120, "description": "Selected batch time slot" },
+        "branch": { "type": "string", "maxLength": 120, "description": "Dojo training branch" },
+        "coachName": { "type": "string", "maxLength": 120, "description": "Assigned coach name" },
+        "beltLevel": { "type": "string", "maxLength": 80, "description": "Current belt level" },
+        "photoUrl": { "type": "string", "maxLength": 800000, "description": "Base64 encoded or direct URL of the uploaded image" },
         "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Status of the admission" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the application was created" },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the application was last updated" },
+        "feesStatus": { "type": "string", "maxLength": 32, "description": "Fee payment status" },
+        "paidMonths": { "type": "array", "description": "YYYY-MM keys of paid monthly fees" },
+        "lastPaymentDate": { "type": "number", "description": "Epoch ms of last fee payment" },
+        "termsAccepted": { "type": "boolean", "description": "Terms accepted flag" },
+        "isDirectExamRegistration": { "type": "boolean", "description": "Direct exam registration admission flag" },
+        "approvedAt": { "type": "number", "description": "Timestamp when student was approved" },
+        "createdAt": { "type": "number", "description": "Timestamp when the application was created" },
+        "updatedAt": { "type": "number", "description": "Timestamp when the application was last updated" },
         "joiningDate": { "type": "number", "description": "Timestamp when student was approved and joined" },
         "sendEmailNotification": { "type": "boolean", "description": "Flag to opt-in for email notification copy of registration" },
-        "schoolName": { "type": "string", "description": "Name of the school/college of the student" }
+        "schoolName": { "type": "string", "maxLength": 160, "description": "Name of the school/college of the student" }
       },
-      "required": ["fullName", "dob", "age", "gender", "phone", "email", "batch", "beltLevel", "status"]
+      "required": ["fullName", "phone", "batch", "beltLevel", "status"]
     },
     "exam": {
       "title": "Exam",
       "description": "Represents a belt grading exam registration and results.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique exam identifier" },
-        "studentId": { "type": "string", "description": "Format LKCP-YYYY-XXX" },
-        "studentName": { "type": "string", "description": "Name of the student" },
-        "parentName": { "type": "string", "description": "Parent or guardian name" },
-        "parentPhone": { "type": "string", "description": "Parent phone number" },
-        "branch": { "type": "string", "description": "Dojo training branch" },
-        "coachName": { "type": "string", "description": "Dojo coach name" },
-        "currentBelt": { "type": "string", "description": "Current belt level" },
-        "targetBelt": { "type": "string", "description": "Belt testing for" },
-        "status": { "type": "string", "enum": ["pending", "approved", "passed", "failed"], "description": "Exam grading status" },
-        "feesStatus": { "type": "string", "enum": ["Paid", "Pending"], "description": "Fees payment status" },
-        "examScheduleId": { "type": "string", "description": "Scheduled exam reference ID" },
-        "examDate": { "type": "string", "description": "Date of the exam event" },
-        "venueDetails": { "type": "string", "description": "Venue details" },
-        "grade": { "type": "string", "description": "Assigned grade" },
-        "remarks": { "type": "string", "description": "Coach feedback/remarks" },
+        "id": { "type": "string", "maxLength": 128, "description": "Unique exam identifier" },
+        "studentId": { "type": "string", "maxLength": 40, "description": "Format LKCP-YYYY-XXX" },
+        "studentName": { "type": "string", "maxLength": 120, "description": "Name of the student" },
+        "parentName": { "type": "string", "maxLength": 120, "description": "Parent or guardian name" },
+        "parentPhone": { "type": "string", "maxLength": 24, "description": "Parent phone number" },
+        "branch": { "type": "string", "maxLength": 120, "description": "Dojo training branch" },
+        "coachName": { "type": "string", "maxLength": 120, "description": "Dojo coach name" },
+        "schoolName": { "type": "string", "maxLength": 160, "description": "School name" },
+        "currentBelt": { "type": "string", "maxLength": 80, "description": "Current belt level" },
+        "targetBelt": { "type": "string", "maxLength": 80, "description": "Belt testing for" },
+        "status": { "type": "string", "enum": ["pending", "registered", "approved", "passed", "failed"], "description": "Exam grading status" },
+        "feesStatus": { "type": "string", "maxLength": 32, "description": "Fees payment status" },
+        "examScheduleId": { "type": "string", "maxLength": 128, "description": "Scheduled exam reference ID" },
+        "examDate": { "type": "string", "maxLength": 64, "description": "Date of the exam event" },
+        "venueDetails": { "type": "string", "maxLength": 300, "description": "Venue details" },
+        "checkedIn": { "type": "boolean", "description": "Whether student checked in on exam day" },
+        "checkInTime": { "type": "string", "maxLength": 40, "description": "Human-readable check-in time" },
+        "checkInTimestamp": { "type": "number", "description": "Epoch ms of check-in" },
+        "disciplinesGrades": { "type": "object", "description": "Map of discipline grades" },
+        "grade": { "type": "string", "maxLength": 16, "description": "Assigned grade" },
+        "isPublished": { "type": "boolean", "description": "Whether grade is published to student portal" },
+        "examinerName": { "type": "string", "maxLength": 120, "description": "Sensei/Examiner name" },
+        "gradedAt": { "type": "number", "description": "Epoch ms graded" },
+        "remarks": { "type": "string", "maxLength": 500, "description": "Coach feedback/remarks" },
         "createdAt": { "type": "number", "description": "Timestamp created" },
         "updatedAt": { "type": "number", "description": "Timestamp updated" }
       },
@@ -58,11 +75,11 @@
       "description": "Represents a scheduled exam event documented by admins.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique identifier" },
-        "examDate": { "type": "string", "description": "Scheduled exam date" },
-        "beltLevel": { "type": "string", "description": "Target belt level of the exam" },
-        "venueDetails": { "type": "string", "description": "Venue details where exam will be held" },
-        "prerequisites": { "type": "string", "description": "Prerequisites or requirements for registration" },
+        "id": { "type": "string", "maxLength": 128, "description": "Unique identifier" },
+        "examDate": { "type": "string", "maxLength": 64, "description": "Scheduled exam date" },
+        "beltLevel": { "type": "string", "maxLength": 80, "description": "Target belt level of the exam" },
+        "venueDetails": { "type": "string", "maxLength": 300, "description": "Venue details where exam will be held" },
+        "prerequisites": { "type": "string", "maxLength": 500, "description": "Prerequisites or requirements for registration" },
         "createdAt": { "type": "number", "description": "Timestamp created" },
         "updatedAt": { "type": "number", "description": "Timestamp updated" }
       },
@@ -73,24 +90,27 @@
       "description": "Represents a karate training batch.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique batch identifier" },
-        "name": { "type": "string", "description": "Name of the batch" },
-        "ageGroup": { "type": "string", "description": "Target age group" },
-        "timing": { "type": "string", "description": "Time range of sessions" },
-        "days": { "type": "string", "description": "Meeting days of the week" },
-        "focus": { "type": "string", "description": "Curriculum focus" },
-        "price": { "type": "string", "description": "Monthly tuition price text" },
-        "coaches": { "type": "string", "description": "Comma-separated or formatted names of assigned coaches" }
+        "id": { "type": "string", "maxLength": 128, "description": "Unique batch identifier" },
+        "name": { "type": "string", "maxLength": 120, "description": "Name of the batch" },
+        "ageGroup": { "type": "string", "maxLength": 80, "description": "Target age group" },
+        "timing": { "type": "string", "maxLength": 80, "description": "Time range of sessions" },
+        "days": { "type": "string", "maxLength": 120, "description": "Meeting days of the week" },
+        "focus": { "type": "string", "maxLength": 240, "description": "Curriculum focus" },
+        "price": { "type": "string", "maxLength": 64, "description": "Monthly tuition price text" },
+        "coaches": { "type": "string", "maxLength": 200, "description": "Comma-separated or formatted names of assigned coaches" }
       },
       "required": ["name", "timing", "days"]
     },
     "siteSettings": {
       "title": "SiteSettings",
-      "description": "Store configuration and media asset references for the dojo website.",
+      "description": "Store public site media, exam toggle settings, sequential ID counters, and admin-only integration settings.",
       "type": "object",
       "properties": {
-        "heroVideoUrl": { "type": "string", "description": "URL or local reference of background video in hero section" },
-        "aboutVideoUrl": { "type": "string", "description": "URL or local reference of active training video in about section" }
+        "heroVideoUrl": { "type": "string", "maxLength": 500, "description": "URL or local reference of background video in hero section" },
+        "aboutVideoUrl": { "type": "string", "maxLength": 500, "description": "URL or local reference of active training video in about section" },
+        "isExamActive": { "type": "boolean", "description": "Exam day check-in active flag" },
+        "lastSerial": { "type": "number", "description": "Sequential student ID counter" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
       }
     },
     "attendance": {
@@ -98,16 +118,36 @@
       "description": "Represents a student's daily attendance record.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique key matching studentId_date" },
-        "studentId": { "type": "string", "description": "Student LKCP ID" },
-        "studentName": { "type": "string", "description": "Student full name" },
-        "date": { "type": "string", "description": "Date in YYYY-MM-DD format" },
+        "id": { "type": "string", "maxLength": 128, "description": "Unique key matching studentId_date" },
+        "studentId": { "type": "string", "maxLength": 40, "description": "Student LKCP ID" },
+        "studentName": { "type": "string", "maxLength": 120, "description": "Student full name" },
+        "date": { "type": "string", "maxLength": 32, "description": "Date in YYYY-MM-DD format" },
         "status": { "type": "string", "enum": ["Present", "Absent"], "description": "Attendance status" },
-        "coachName": { "type": "string", "description": "Coach who marked this attendance" },
-        "batchName": { "type": "string", "description": "Batch of the student" },
-        "notes": { "type": "string", "description": "Optional notes or announcement details" },
+        "coachName": { "type": "string", "maxLength": 120, "description": "Coach who marked this attendance" },
+        "batchName": { "type": "string", "maxLength": 120, "description": "Batch of the student" },
+        "checkInTime": { "type": "string", "maxLength": 40, "description": "Optional exam check-in time" },
+        "checkInTimestamp": { "type": "number", "description": "Optional check-in epoch ms" },
+        "notes": { "type": "string", "maxLength": 300, "description": "Optional notes or announcement details" },
         "createdAt": { "type": "number", "description": "Timestamp created" },
         "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["studentId", "studentName", "date", "status"]
+    },
+    "attendanceLog": {
+      "title": "AttendanceLog",
+      "description": "Represents branch mat and QR attendance check-in records.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "maxLength": 40, "description": "Student LKCP ID" },
+        "studentName": { "type": "string", "maxLength": 120, "description": "Student full name" },
+        "date": { "type": "string", "maxLength": 32, "description": "Date in YYYY-MM-DD format" },
+        "branch": { "type": "string", "maxLength": 120, "description": "Dojo branch name" },
+        "batch": { "type": "string", "maxLength": 120, "description": "Student batch" },
+        "beltLevel": { "type": "string", "maxLength": 80, "description": "Student belt level" },
+        "status": { "type": "string", "enum": ["Present", "present", "absent", "unmarked"], "description": "Mat attendance status" },
+        "markedBy": { "type": "string", "maxLength": 60, "description": "Actor role" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Server timestamp" },
+        "updatedAt": { "type": "number", "description": "Epoch ms updated" }
       },
       "required": ["studentId", "studentName", "date", "status"]
     },
@@ -116,39 +156,40 @@
       "description": "Represents dynamic SEO sitemap and crawling engine update notifications.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "studentId": { "type": "string" },
-        "studentName": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 40 },
+        "studentName": { "type": "string", "maxLength": 120 },
         "createdAt": { "type": "number" },
-        "eventType": { "type": "string" },
-        "sitemapUrl": { "type": "string" },
-        "status": { "type": "string" }
+        "eventType": { "type": "string", "maxLength": 120 },
+        "sitemapUrl": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "maxLength": 40 },
+        "notifiedEngines": { "type": "array" }
       },
       "required": ["studentName", "createdAt", "status"]
     },
     "receipt": {
       "title": "Receipt",
-      "description": "Represents a generated fee and billing receipt for student payments.",
+      "description": "Represents a generated fee and billing receipt for student payments (Admin-only).",
       "type": "object",
       "properties": {
-        "receiptNo": { "type": "string", "description": "Receipt reference number" },
-        "date": { "type": "string", "description": "Date of receipt" },
-        "studentId": { "type": "string", "description": "Student LKCP ID" },
-        "studentName": { "type": "string", "description": "Student full name" },
-        "parentName": { "type": "string", "description": "Parent or guardian name" },
-        "phone": { "type": "string", "description": "Phone number" },
-        "whatsApp": { "type": "string", "description": "WhatsApp number" },
-        "email": { "type": "string", "description": "Email address" },
-        "address": { "type": "string", "description": "Physical address" },
-        "branch": { "type": "string", "description": "Dojo training branch" },
-        "batch": { "type": "string", "description": "Batch of the student" },
-        "beltLevel": { "type": "string", "description": "Belt level rank" },
-        "paymentMode": { "type": "string", "description": "Cash, GPay, UPI, etc." },
+        "receiptNo": { "type": "string", "maxLength": 64, "description": "Receipt reference number" },
+        "date": { "type": "string", "maxLength": 32, "description": "Date of receipt" },
+        "studentId": { "type": "string", "maxLength": 40, "description": "Student LKCP ID" },
+        "studentName": { "type": "string", "maxLength": 120, "description": "Student full name" },
+        "parentName": { "type": "string", "maxLength": 120, "description": "Parent or guardian name" },
+        "phone": { "type": "string", "maxLength": 24, "description": "Phone number" },
+        "whatsApp": { "type": "string", "maxLength": 24, "description": "WhatsApp number" },
+        "email": { "type": "string", "maxLength": 160, "description": "Email address" },
+        "address": { "type": "string", "maxLength": 500, "description": "Physical address" },
+        "branch": { "type": "string", "maxLength": 120, "description": "Dojo training branch" },
+        "batch": { "type": "string", "maxLength": 120, "description": "Batch of the student" },
+        "beltLevel": { "type": "string", "maxLength": 80, "description": "Belt level rank" },
+        "paymentMode": { "type": "string", "maxLength": 64, "description": "Cash, GPay, UPI, etc." },
         "items": { "type": "array", "description": "List of billing line items" },
         "totalAmount": { "type": "number", "description": "Sum of all line items" },
         "paidAmount": { "type": "number", "description": "Amount paid by user" },
         "balanceAmount": { "type": "number", "description": "Balance due amount" },
-        "remarks": { "type": "string", "description": "Custom billing or payment remarks" },
+        "remarks": { "type": "string", "maxLength": 500, "description": "Custom billing or payment remarks" },
         "createdAt": { "type": "number", "description": "Timestamp created" }
       },
       "required": ["receiptNo", "date", "studentName", "paymentMode", "totalAmount", "paidAmount", "balanceAmount", "createdAt"]
@@ -158,15 +199,15 @@
       "description": "Represents an online enquiry or query submitted by a parent.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique auto-generated ID" },
-        "parentName": { "type": "string", "description": "Full name of the parent" },
-        "childName": { "type": "string", "description": "Name of the child (optional)" },
-        "phone": { "type": "string", "description": "Contact phone number" },
-        "email": { "type": "string", "description": "Email address (optional)" },
-        "queryType": { "type": "string", "description": "Category of query (e.g. Admission, Fees, Batch, Exam)" },
-        "message": { "type": "string", "description": "Detailed query text" },
+        "id": { "type": "string", "maxLength": 128, "description": "Unique auto-generated ID" },
+        "parentName": { "type": "string", "maxLength": 120, "description": "Full name of the parent" },
+        "childName": { "type": "string", "maxLength": 120, "description": "Name of the child (optional)" },
+        "phone": { "type": "string", "maxLength": 24, "description": "Contact phone number" },
+        "email": { "type": "string", "maxLength": 160, "description": "Email address (optional)" },
+        "queryType": { "type": "string", "maxLength": 80, "description": "Category of query" },
+        "message": { "type": "string", "maxLength": 2000, "description": "Detailed query text" },
         "status": { "type": "string", "enum": ["new", "in_progress", "resolved"], "description": "Resolution status" },
-        "followUpNotes": { "type": "string", "description": "Internal admin-only notes (optional)" },
+        "followUpNotes": { "type": "string", "maxLength": 1000, "description": "Internal admin-only notes (optional)" },
         "createdAt": { "type": "number", "description": "Timestamp created" },
         "updatedAt": { "type": "number", "description": "Timestamp updated" }
       },
@@ -192,11 +233,23 @@
     },
     "/settings/{settingId}": {
       "schema": "siteSettings",
-      "description": "Store modular configurations and adjustable variables represent site pages."
+      "description": "Store modular configurations, counters, and admin-only WhatsApp integration config."
     },
     "/attendance/{attendanceId}": {
       "schema": "attendance",
-      "description": "Store daily attendance records keyed by studentId_date or auto-id."
+      "description": "Store daily attendance records keyed by studentId_date."
+    },
+    "/attendance_logs/{logId}": {
+      "schema": "attendanceLog",
+      "description": "Store daily mat and QR attendance logs."
+    },
+    "/students/{studentId}": {
+      "schema": "admission",
+      "description": "Legacy student directory records."
+    },
+    "/candidates/{candidateId}": {
+      "schema": "admission",
+      "description": "Legacy candidate records."
     },
     "/seo_indexing_logs/{logId}": {
       "schema": "seoIndexingLog",
@@ -204,7 +257,7 @@
     },
     "/receipts/{receiptId}": {
       "schema": "receipt",
-      "description": "Store generated fee and billing receipts."
+      "description": "Store generated fee and billing receipts (Admin-only)."
     },
     "/parent_queries/{queryId}": {
       "schema": "parentQuery",

@@ -153,7 +153,7 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
                     >
                       <Lock className="w-4 h-4 text-yellow-500 shrink-0" />
                       <div>
-                        <span className="font-bold text-white block">🥋 Coach Portal (LKCP09)</span>
+                        <span className="font-bold text-white block">🥋 Coach Portal</span>
                         <span className="text-[10px] text-zinc-500 font-mono">Branch Roll Call & Fees</span>
                       </div>
                     </button>
@@ -212,7 +212,7 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
             <button
               onClick={() => onNavigate('coach')}
               aria-label="Coach Portal"
-              title="Coach Portal (LKCP09)"
+              title="Coach Portal"
               className={`p-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors ${
                 currentView === 'coach'
                   ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500'
@@ -328,7 +328,7 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
                         : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20'
                     }`}
                   >
-                    🥋 COACH PORTAL (LKCP09)
+                    🥋 COACH PORTAL
                   </motion.button>
 
                   <motion.button

@@ -354,7 +354,7 @@ export default function App() {
           </main>
         )}
 
-        {/* RENDER VIEW 9: COACH MAT PORTAL (PASSCODE PROTECTED LKCP09) */}
+        {/* RENDER VIEW 9: COACH MAT PORTAL (PASSCODE PROTECTED) */}
         {view === 'coach' && (
           <main className="flex-grow">
             <CoachPortal onBackToHome={() => navigateTo('home')} />

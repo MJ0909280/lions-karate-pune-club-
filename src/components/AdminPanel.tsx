@@ -884,11 +884,6 @@ export default function AdminPanel() {
   const [settingsSuccess, setSettingsSuccess] = useState(false);
   const [settingsError, setSettingsError] = useState('');
 
-  // WhatsApp Alert Configuration Inputs
-  const [waEnabled, setWaEnabled] = useState(false);
-  const [waPhoneNumber, setWaPhoneNumber] = useState('');
-  const [waApiKey, setWaApiKey] = useState('');
-
   // Dynamic state managers represent batches in db
   const [batches, setBatches] = useState<BatchInfo[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
@@ -1181,26 +1176,6 @@ export default function AdminPanel() {
     return () => unsub();
   }, [user, isAdmin]);
 
-  // Sync WhatsApp Site Notification Settings in real-time
-  useEffect(() => {
-    if (!user || !isAdmin) return;
-    const unsub = onSnapshot(doc(db, 'settings', 'whatsapp'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setWaEnabled(!!data.enabled);
-        setWaPhoneNumber(data.phoneNumber || '');
-        setWaApiKey(data.apiKey || '');
-      } else {
-        setWaEnabled(false);
-        setWaPhoneNumber('+91 90496 88172');
-        setWaApiKey('');
-      }
-    }, (error) => {
-      console.error("Firestore settings/whatsapp sync error: ", error);
-    });
-    return () => unsub();
-  }, [user, isAdmin]);
-
   // Sync real-time Exams database
   useEffect(() => {
     if (!user || !isAdmin) {
@@ -1303,12 +1278,6 @@ export default function AdminPanel() {
         aboutVideoUrl: aboutVideoInput.trim(),
         kataVideoUrl: kataVideoInput.trim(),
         kataVideoUrl2: kataVideoInput2.trim(),
-        updatedAt: Date.now()
-      });
-      await setDoc(doc(db, 'settings', 'whatsapp'), {
-        enabled: waEnabled,
-        phoneNumber: waPhoneNumber.trim(),
-        apiKey: waApiKey.trim(),
         updatedAt: Date.now()
       });
       setSettingsSuccess(true);
@@ -5053,90 +5022,6 @@ export default function AdminPanel() {
                     Enter the direct MP4 URL or Cloudinary URL for the synchronized Group Showcase video.
                   </span>
                 </div>
-              </div>
-
-              {/* WhatsApp Auto-Alert server integration configuration */}
-              <div className="border-t border-zinc-900/60 pt-6 space-y-5">
-                <div className="flex items-center space-x-3.5 pb-2">
-                  <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg border border-emerald-500/20">
-                    <Phone className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading font-black text-sm uppercase text-white tracking-wider">WhatsApp Auto-Alert Server Integration</h3>
-                    <p className="text-[10px] font-medium text-zinc-500 mt-0.5">Receive instant WhatsApp alerts automatically as soon as any student registers or submits inquiries.</p>
-                  </div>
-                </div>
-
-                {/* Enable toggle switches */}
-                <div className="flex items-center space-x-3 bg-zinc-950/40 p-3.5 border border-zinc-900/60 rounded-xl">
-                  <input
-                    type="checkbox"
-                    id="waEnabled"
-                    checked={waEnabled}
-                    onChange={(e) => setWaEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
-                  />
-                  <label htmlFor="waEnabled" className="text-xs text-zinc-300 font-medium select-none cursor-pointer">
-                    Enable automatic background alerts on student admission forms and quick register inquiries.
-                  </label>
-                </div>
-
-                {waEnabled && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in text-left">
-                    {/* Admin WhatsApp Number phone prefix */}
-                    <div className="space-y-2">
-                      <label className="block text-[9px] font-mono text-zinc-400 font-extrabold uppercase tracking-wider">
-                        My WhatsApp Phone Number (with Country Code)
-                      </label>
-                      <input
-                        type="text"
-                        value={waPhoneNumber}
-                        onChange={(e) => setWaPhoneNumber(e.target.value)}
-                        placeholder="e.g. 919049688172 (No spaces, pluses or dashes)"
-                        className="w-full bg-slate-950/80 border border-zinc-800 rounded-lg px-4 py-2.5 text-xs text-white font-medium focus:outline-none focus:border-emerald-500/50 transition-all font-mono placeholder:text-zinc-650"
-                      />
-                      <span className="block text-[8px] text-zinc-500">
-                        Include prefix code (e.g. <code className="font-mono text-zinc-400">91</code> for India, <code className="font-mono text-zinc-400">1</code> for US). Avoid leading sign (+).
-                      </span>
-                    </div>
-
-                    {/* CallMeBot key credentials API key */}
-                    <div className="space-y-2">
-                      <label className="block text-[9px] font-mono text-zinc-400 font-extrabold uppercase tracking-wider">
-                        CallMeBot Free API Key (Apikey)
-                      </label>
-                      <input
-                        type="text"
-                        value={waApiKey}
-                        onChange={(e) => setWaApiKey(e.target.value)}
-                        placeholder="e.g. 783295"
-                        className="w-full bg-slate-950/80 border border-zinc-800 rounded-lg px-4 py-2.5 text-xs text-white font-medium focus:outline-none focus:border-emerald-500/50 transition-all font-mono placeholder:text-zinc-650"
-                      />
-                      <span className="block text-[8px] text-zinc-500">
-                        Required to dispatch free WhatsApp API streams continuously directly into your inbox.
-                      </span>
-                    </div>
-
-                    {/* Obtain instructions block guide box */}
-                    <div className="md:col-span-2 bg-emerald-950/10 border border-emerald-500/10 p-4 rounded-xl space-y-2 text-left">
-                      <span className="block font-heading font-black text-[9px] text-emerald-400 uppercase tracking-widest">
-                        ⚡ Quick Guide: Obtain Free CallMeBot API Key in 60 Seconds:
-                      </span>
-                      <ol className="list-decimal list-inside text-[9px] text-zinc-400 leading-relaxed font-mono space-y-1">
-                        <li>
-                          Save one of CallMeBot's active bot numbers as a contact:
-                          <ul className="list-disc list-inside pl-4 mt-0.5 space-y-0.5 text-[8px] text-zinc-500">
-                            <li>Primary Bot: <strong className="text-emerald-400 select-all">+34 694 23 67 31</strong></li>
-                            <li>Backup Bot A: <strong className="text-zinc-300 select-all">+34 623 78 64 49</strong></li>
-                            <li>Backup Bot B: <strong className="text-zinc-300 select-all">+34 644 97 50 14</strong></li>
-                          </ul>
-                        </li>
-                        <li className="mt-1">Send a WhatsApp message containing: <strong className="text-emerald-400 select-all">I allow callmebot to send me messages</strong></li>
-                        <li>The bot will instantly reply with your personalized <strong className="text-zinc-300 font-bold">Apikey</strong> (e.g. <span className="text-yellow-500 font-bold">129482</span>). Copy and paste it here!</li>
-                      </ol>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Uploaded File Helper Alert Info */}

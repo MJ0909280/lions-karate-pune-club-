@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Lock, Unlock, ShieldCheck, Users, CheckCircle2, XCircle, 
   Calendar, MapPin, Search, MessageCircle, CheckCheck, 
-  AlertCircle, LogOut, RefreshCw, Award, ArrowLeft, Filter, Phone
+  AlertCircle, LogOut, RefreshCw, Award, ArrowLeft, Filter, Phone,
+  Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
@@ -17,19 +18,13 @@ interface CoachPortalProps {
   onBackToHome: () => void;
 }
 
-const COACH_PASSCODE = 'LKCP09';
-const SESSION_KEY = 'lkcp_coach_auth_session';
+const TOKEN_STORAGE_KEY = 'lkcp_coach_token';
 
 export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(SESSION_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // Authentication state (verified against backend /api/auth/session)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [passcodeInput, setPasscodeInput] = useState('');
+  const [showPasscode, setShowPasscode] = useState(false);
   const [passcodeError, setPasscodeError] = useState('');
   const [authenticating, setAuthenticating] = useState(false);
 
@@ -62,35 +57,78 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     }, 3500);
   };
 
-  // Handle Passcode Submission
-  const handlePasscodeSubmit = (e: React.FormEvent) => {
+  // Verify existing HMAC token on mount
+  useEffect(() => {
+    let active = true;
+    const validateExistingSession = async () => {
+      try {
+        const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+        if (!token) return;
+        const res = await fetch('/api/auth/session', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.role === 'coach') {
+            setIsAuthenticated(true);
+            return;
+          }
+        }
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      } catch {
+        // Ignore network errors on mount
+      }
+    };
+    validateExistingSession();
+    return () => { active = false; };
+  }, []);
+
+  // Handle Passcode Submission via Backend Server
+  const handlePasscodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!passcodeInput.trim()) return;
+
     setAuthenticating(true);
     setPasscodeError('');
 
-    const cleanInput = passcodeInput.trim().toUpperCase();
-    if (cleanInput === COACH_PASSCODE) {
-      try {
-        sessionStorage.setItem(SESSION_KEY, 'true');
-      } catch (err) {
-        console.warn('Session storage warning:', err);
+    try {
+      const res = await fetch('/api/auth/verify-coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: passcodeInput.trim() })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.authenticated && data.token) {
+        try {
+          sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+        } catch (err) {
+          console.warn('Session storage warning:', err);
+        }
+        setIsAuthenticated(true);
+        setPasscodeInput('');
+        setShowPasscode(false);
+      } else {
+        setPasscodeError(data.error || 'Invalid passcode. Access denied.');
       }
-      setIsAuthenticated(true);
-      setPasscodeInput('');
-    } else {
-      setPasscodeError('Invalid passcode. Please enter the authorized coach code.');
+    } catch {
+      setPasscodeError('Unable to reach authentication server. Please try again.');
+    } finally {
+      setAuthenticating(false);
     }
-    setAuthenticating(false);
   };
 
   const handleLogout = () => {
     try {
-      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     } catch (err) {
       console.warn('Session storage warning:', err);
     }
     setIsAuthenticated(false);
     setPasscodeInput('');
+    setShowPasscode(false);
   };
 
   // Fetch Students & Attendance records when authenticated
@@ -434,17 +472,26 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
                 </label>
                 <div className="relative">
                   <input
-                    type="password"
-                    maxLength={10}
+                    type={showPasscode ? 'text' : 'password'}
+                    maxLength={20}
+                    autoComplete="current-password"
                     value={passcodeInput}
                     onChange={(e) => {
                       setPasscodeInput(e.target.value);
                       if (passcodeError) setPasscodeError('');
                     }}
-                    placeholder="Enter passcode (LKCP09)"
+                    placeholder="Enter authorized passcode"
                     autoFocus
-                    className="w-full bg-slate-950 border border-zinc-700 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] font-mono font-bold text-white uppercase focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors"
+                    className="w-full bg-slate-950 border border-zinc-700 rounded-xl pl-4 pr-12 py-3 text-center text-lg tracking-[0.25em] font-mono font-bold text-white uppercase focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors placeholder:text-xs placeholder:tracking-normal placeholder:normal-case placeholder:text-zinc-600"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasscode(prev => !prev)}
+                    aria-label={showPasscode ? 'Hide passcode' : 'Show passcode'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  >
+                    {showPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
                 {passcodeError && (
                   <p className="text-red-400 text-xs mt-2 flex items-center gap-1.5 justify-center">
