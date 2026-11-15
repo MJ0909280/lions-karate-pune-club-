@@ -65,6 +65,9 @@
         "examinerName": { "type": "string", "maxLength": 120, "description": "Sensei/Examiner name" },
         "gradedAt": { "type": "number", "description": "Epoch ms graded" },
         "remarks": { "type": "string", "maxLength": 500, "description": "Coach feedback/remarks" },
+        "resultViewLocked": { "type": "boolean", "description": "Whether the published exam result has been viewed once and locked" },
+        "resultViewedAt": { "type": "number", "description": "Epoch ms when the parent first viewed the published result" },
+        "resultViewedCount": { "type": "number", "description": "Total number of times result view lock was triggered" },
         "createdAt": { "type": "number", "description": "Timestamp created" },
         "updatedAt": { "type": "number", "description": "Timestamp updated" }
       },

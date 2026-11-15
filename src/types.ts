@@ -171,11 +171,43 @@ export interface ExamRegistration {
   disciplinesGrades?: DisciplineGrades;
   examinerName?: string;
   gradedAt?: number;
+  isPublished?: boolean;
+  resultViewLocked?: boolean;
+  resultViewedAt?: number;
+  resultViewedCount?: number;
   checkedIn?: boolean;
   checkInTime?: string;
   checkInTimestamp?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export function findBeltIndex(beltName?: string | null): number {
+  if (!beltName) return 0;
+  const clean = beltName.split('(')[0].toLowerCase().trim();
+  if (!clean) return 0;
+
+  // Check exact match first so "Brown" doesn't match "Brown 1+2" accidentally
+  const exactIdx = BELT_LEVELS.findIndex((b) => b.name.toLowerCase() === clean);
+  if (exactIdx !== -1) return exactIdx;
+
+  // Handle descriptive suffixes like "Brown 1+2 (3rd Kyu)" or "Yellow Belt (9th Kyu)"
+  // Iterate from highest rank down so specific names match first
+  for (let i = BELT_LEVELS.length - 1; i >= 0; i--) {
+    const bName = BELT_LEVELS[i].name.toLowerCase();
+    if (clean.includes(bName) || bName.includes(clean)) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+export function getNextBeltName(currentBeltName?: string | null): string {
+  const idx = findBeltIndex(currentBeltName);
+  if (idx < BELT_LEVELS.length - 1) {
+    return BELT_LEVELS[idx + 1].name;
+  }
+  return BELT_LEVELS[BELT_LEVELS.length - 1].name;
 }
 
 export const GRADE_POINTS: Record<GradeValue, number> = {

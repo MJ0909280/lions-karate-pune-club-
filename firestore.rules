@@ -138,7 +138,16 @@ service cloud.firestore {
              isStrLen(data.examinerName, 1, 120) &&
              data.isPublished is bool &&
              data.disciplinesGrades is map &&
+             isOptionalStr(data, 'remarks', 500) &&
              data.gradedAt is int &&
+             data.updatedAt is int;
+    }
+
+    function isValidExamResultViewLockUpdate(data) {
+      return data.resultViewLocked == true &&
+             data.resultViewedAt is int &&
+             data.resultViewedCount is int &&
+             data.resultViewedCount >= 1 &&
              data.updatedAt is int;
     }
 
@@ -268,8 +277,14 @@ service cloud.firestore {
           isValidExamCheckInUpdate(incoming())
         ) ||
         (
-          incoming().diff(existing()).affectedKeys().hasOnly(['disciplinesGrades', 'grade', 'status', 'isPublished', 'examinerName', 'gradedAt', 'updatedAt']) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['disciplinesGrades', 'grade', 'status', 'remarks', 'isPublished', 'examinerName', 'gradedAt', 'updatedAt']) &&
           isValidExamGradingUpdate(incoming())
+        ) ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['resultViewLocked', 'resultViewedAt', 'resultViewedCount', 'updatedAt']) &&
+          existing().get('resultViewLocked', false) == false &&
+          existing().status in ['passed', 'failed'] &&
+          isValidExamResultViewLockUpdate(incoming())
         )
       );
       allow delete: if isValidId(examId) && isAdmin();

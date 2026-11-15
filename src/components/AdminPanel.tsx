@@ -845,7 +845,8 @@ export default function AdminPanel() {
 
   // Bulk Grading state managers
   const [bulkGradingModalOpen, setBulkGradingModalOpen] = useState(false);
-  const [bulkGradingScope, setBulkGradingScope] = useState<'present' | 'ungraded' | 'all_registered'>('present');
+  const [bulkGradingScope, setBulkGradingScope] = useState<'present' | 'ungraded' | 'all_registered' | 'custom'>('present');
+  const [bulkSelectedExamIds, setBulkSelectedExamIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<'passed' | 'failed'>('passed');
   const [bulkGrade, setBulkGrade] = useState<GradeValue>('A');
   const [bulkDisciplines, setBulkDisciplines] = useState<DisciplineGrades>({
@@ -861,6 +862,7 @@ export default function AdminPanel() {
   const [bulkPublish, setBulkPublish] = useState(true);
   const [bulkGradingSaving, setBulkGradingSaving] = useState(false);
   const [bulkGradingProgress, setBulkGradingProgress] = useState({ current: 0, total: 0 });
+  const [bulkFeedbackMsg, setBulkFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const setAllBulkDisciplines = (gradeVal: GradeValue) => {
     setBulkDisciplines({
@@ -1816,7 +1818,7 @@ export default function AdminPanel() {
       const computedOverall = (adminDisciplinesGrades && Object.keys(adminDisciplinesGrades).length > 0)
         ? calculateOverallGrade(adminDisciplinesGrades)
         : undefined;
-      const finalGradeValue = computedOverall || enteredGrade.trim() || 'A';
+      const finalGradeValue = enteredGrade.trim() || computedOverall || (gradingExam.statusAction === 'failed' ? 'F' : 'A');
 
       // 1. Grade the exam document
       const examRef = doc(db, 'exams', gradingExam.id);
@@ -1826,39 +1828,47 @@ export default function AdminPanel() {
         disciplinesGrades: adminDisciplinesGrades,
         remarks: enteredRemarks.trim(),
         isPublished: adminPublishResult,
+        gradedAt: gradingExam.gradedAt || Date.now(),
         updatedAt: Date.now()
       });
 
-      // 2. If Passed AND Published, graduate the student's belt level in the admissions profile collection
-      if (gradingExam.statusAction === 'passed' && adminPublishResult) {
-        const admissionsRef = collection(db, 'admissions');
-        
-        // Find correct student in memory first for 100% accuracy on duplicate IDs
-        const targetStudent = admissions.find(s => 
+      // 2. Keep student's admissions beltLevel synchronized with Pass/Fail status
+      const findTargetAdmission = () =>
+        admissions.find(s =>
           (s.studentId || '').trim().toUpperCase() === (gradingExam.studentId || '').trim().toUpperCase() &&
           (s.fullName || '').trim().toLowerCase() === (gradingExam.studentName || '').trim().toLowerCase()
-        ) || admissions.find(s => 
+        ) ||
+        admissions.find(s =>
+          (s.studentId || '').trim().toUpperCase() === (gradingExam.studentId || '').trim().toUpperCase()
+        ) ||
+        admissions.find(s =>
           (s.fullName || '').trim().toLowerCase() === (gradingExam.studentName || '').trim().toLowerCase()
         );
-        
+
+      const syncAdmissionBelt = async (nextBelt: string) => {
+        if (!nextBelt) return;
+        const targetStudent = findTargetAdmission();
         if (targetStudent) {
           await updateDoc(doc(db, 'admissions', targetStudent.id), {
-            beltLevel: gradingExam.targetBelt,
+            beltLevel: nextBelt,
             updatedAt: Date.now()
           });
-          console.log(`Successfully graduated student '${targetStudent.fullName}' to belt '${gradingExam.targetBelt}'`);
-        } else {
-          // Fallback to query
-          const q = query(admissionsRef, where('studentId', '==', gradingExam.studentId));
+        } else if (gradingExam.studentId) {
+          const q = query(collection(db, 'admissions'), where('studentId', '==', gradingExam.studentId));
           const snap = await getDocs(q);
           if (!snap.empty) {
-            const studentDoc = snap.docs[0];
-            await updateDoc(doc(db, 'admissions', studentDoc.id), {
-              beltLevel: gradingExam.targetBelt,
+            await updateDoc(doc(db, 'admissions', snap.docs[0].id), {
+              beltLevel: nextBelt,
               updatedAt: Date.now()
             });
           }
         }
+      };
+
+      if (gradingExam.statusAction === 'passed' && adminPublishResult) {
+        await syncAdmissionBelt(gradingExam.targetBelt);
+      } else if (gradingExam.statusAction === 'failed' && gradingExam.currentBelt) {
+        await syncAdmissionBelt(gradingExam.currentBelt);
       }
 
       setGradingExam(null);
@@ -5658,15 +5668,44 @@ export default function AdminPanel() {
                                         <span>Share Link</span>
                                       </button>
 
-                                      {/* Publish Result toggle for parents view */}
+                                      {/* 1-Time Result View Lock Status + Admin Unlock Button */}
                                       {(item.status === 'passed' || item.status === 'failed') && (
+                                        item.resultViewLocked ? (
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await updateDoc(doc(db, 'exams', item.id), {
+                                                  resultViewLocked: false,
+                                                  updatedAt: Date.now()
+                                                });
+                                              } catch (err) {
+                                                console.error("Failed to unlock result view:", err);
+                                              }
+                                            }}
+                                            className="bg-red-500/15 hover:bg-emerald-600 text-red-300 hover:text-white border border-red-500/30 hover:border-emerald-500 text-[9px] font-heading font-black uppercase tracking-wider px-2 py-1 rounded transition-all cursor-pointer"
+                                            title="Result locked after 1 parent view. Click to unlock 1 more view."
+                                          >
+                                            🔒 Viewed · Unlock
+                                          </button>
+                                        ) : item.isPublished ? (
+                                          <span
+                                            className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[9px] font-mono px-2 py-1 rounded"
+                                            title="Ready for 1-time parent view"
+                                          >
+                                            🔓 1-View Ready
+                                          </span>
+                                        ) : null
+                                      )}
+
+                                      {/* Edit Grade, Remarks & Publish Controls */}
+                                      {(item.status === 'passed' || item.status === 'failed') ? (
                                         <div className="flex items-center gap-1">
                                           <button
                                             onClick={() => openGradingModal(item, item.status)}
                                             className="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 text-[9px] font-heading font-black uppercase tracking-wider px-2 py-1 rounded transition-all cursor-pointer"
-                                            title="Edit/Upgrade student grade or feedback"
+                                            title="Edit Grade, Remarks or switch Pass/Fail"
                                           >
-                                            Edit Grade
+                                            Edit Grade / Pass-Fail
                                           </button>
                                           <button
                                             onClick={async () => {
@@ -5704,21 +5743,19 @@ export default function AdminPanel() {
                                             {item.isPublished ? '📢 Published' : '🔒 Publish Result'}
                                           </button>
                                         </div>
-                                      )}
-                                      
-                                      {item.status === 'approved' && (
+                                      ) : (
                                         <div className="flex items-center gap-1">
                                           <button
                                             onClick={() => openGradingModal(item, 'passed')}
                                             className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-heading font-black uppercase tracking-widest px-2 py-1 rounded transition-all cursor-pointer"
-                                            title="Assessed and passed"
+                                            title="Grade as Passed & add remarks"
                                           >
                                             Pass
                                           </button>
                                           <button
                                             onClick={() => openGradingModal(item, 'failed')}
                                             className="bg-red-650 hover:bg-red-600 text-white text-[9px] font-heading font-black uppercase tracking-widest px-2 py-1 rounded transition-all cursor-pointer"
-                                            title="Assessed and failed"
+                                            title="Grade as Failed / Needs Retry & add remarks"
                                           >
                                             Fail
                                           </button>
@@ -7791,15 +7828,47 @@ export default function AdminPanel() {
                 <p className="text-[11px] text-zinc-450 mt-1 leading-normal">
                   Rate the physical performance of scholar <strong className="text-white select-all">{gradingExam.studentName}</strong> (LKCP ID: {gradingExam.studentId}) testing for their <span className="text-yellow-500 font-bold">{gradingExam.targetBelt.split(' (')[0]}</span> kyu standard.
                 </p>
-                {gradingExam.statusAction === 'passed' ? (
-                  <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 text-[10px] font-mono p-2 py-1.5 rounded mt-3 text-center uppercase tracking-wider font-extrabold">
-                    👉 On success, student will graduate to: {gradingExam.targetBelt.split(' (')[0]} Belt!
+
+                {/* Manual Pass / Fail Result Outcome Switcher */}
+                <div className="mt-3 space-y-1.5">
+                  <span className="text-[9px] font-heading font-black uppercase tracking-wider text-zinc-400 block">
+                    Manual Pass / Fail Result Status *
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradingExam((prev: any) => prev ? { ...prev, statusAction: 'passed' } : null);
+                        if (!enteredGrade || enteredGrade === 'F' || enteredGrade.toLowerCase().includes('fail')) {
+                          setEnteredGrade('A');
+                        }
+                      }}
+                      className={`py-2 px-3 rounded-lg border text-[11px] font-heading font-black uppercase transition-all cursor-pointer ${
+                        gradingExam.statusAction === 'passed'
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md'
+                          : 'bg-slate-950 text-emerald-400 border-zinc-800 hover:border-emerald-500/40'
+                      }`}
+                    >
+                      ✅ PASSED (Promote Belt)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradingExam((prev: any) => prev ? { ...prev, statusAction: 'failed' } : null);
+                        if (!enteredGrade || ['A+', 'A', 'B+', 'B', 'C'].includes(enteredGrade)) {
+                          setEnteredGrade('F');
+                        }
+                      }}
+                      className={`py-2 px-3 rounded-lg border text-[11px] font-heading font-black uppercase transition-all cursor-pointer ${
+                        gradingExam.statusAction === 'failed'
+                          ? 'bg-red-500 text-white border-red-400 shadow-md'
+                          : 'bg-slate-950 text-red-400 border-zinc-800 hover:border-red-500/40'
+                      }`}
+                    >
+                      ❌ FAILED (Needs Re-Test)
+                    </button>
                   </div>
-                ) : (
-                  <div className="bg-red-500/10 text-red-400 border border-red-500/15 text-[10px] font-mono p-2 py-1.5 rounded mt-3 text-center uppercase tracking-wider font-extrabold">
-                    ⚠️ Set exam result slot to: Requires Review / Restudy.
-                  </div>
-                )}
+                </div>
               </div>
 
               {gradingError && (
@@ -7868,15 +7937,30 @@ export default function AdminPanel() {
                 </div>
 
                 <div>
-                  <label className="text-zinc-400 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">Sensei Remarks & feedback comments *</label>
+                  <label className="text-zinc-400 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">Sensei Remarks & Feedback Comments</label>
                   <textarea
-                    required
                     rows={3}
                     value={enteredRemarks}
                     onChange={(e) => setEnteredRemarks(e.target.value)}
-                    placeholder="e.g. Magnificent execution of Heian Shodan kata, crisp blocks but core needs minor focus..."
+                    placeholder="e.g. Magnificent execution of Heian Shodan kata, crisp blocks and strong kicks..."
                     className="w-full bg-slate-950 border border-zinc-800 text-zinc-305 text-xs px-3 py-2.5 rounded-lg focus:outline-none focus:border-yellow-500 h-20 placeholder:text-zinc-700"
                   />
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {[
+                      'Excellent spirit, discipline, and sharp Kata execution.',
+                      'Good overall performance; keep improving kicks and speed.',
+                      'Requires extra practice on Kata & Kumite for promotion.'
+                    ].map((presetText, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setEnteredRemarks(presetText)}
+                        className="text-[9px] bg-slate-950 hover:bg-zinc-800 text-zinc-400 hover:text-yellow-400 border border-zinc-800 px-2 py-0.5 rounded cursor-pointer"
+                      >
+                        + {presetText.slice(0, 32)}...
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Publish Result toggle checkbox */}
@@ -7953,19 +8037,18 @@ export default function AdminPanel() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
+                setBulkFeedbackMsg(null);
                 let targetExams = [...exams];
                 if (bulkGradingScope === 'present') {
                   targetExams = targetExams.filter(item => item.checkedIn === true);
                 } else if (bulkGradingScope === 'ungraded') {
                   targetExams = targetExams.filter(item => item.checkedIn === true && (item.status === 'approved' || item.status === 'pending' || !item.grade));
+                } else if (bulkGradingScope === 'custom') {
+                  targetExams = targetExams.filter(item => bulkSelectedExamIds.includes(item.id));
                 }
 
                 if (targetExams.length === 0) {
-                  alert("No matching candidates found for this batch evaluation scope.");
-                  return;
-                }
-
-                if (!window.confirm(`Are you sure you want to grade ${targetExams.length} student(s) as "${bulkStatus.toUpperCase()}" with Grade "${bulkGrade}"?`)) {
+                  setBulkFeedbackMsg({ type: 'error', text: 'No matching candidates selected for this batch grading scope.' });
                   return;
                 }
 
@@ -7981,16 +8064,31 @@ export default function AdminPanel() {
                       disciplinesGrades: bulkDisciplines,
                       remarks: bulkRemarks.trim(),
                       isPublished: bulkPublish,
+                      gradedAt: examDoc.gradedAt || Date.now(),
                       updatedAt: Date.now()
                     });
 
-                    if (bulkStatus === 'passed' && bulkPublish) {
-                      const targetStudent = admissions.find(s =>
+                    const targetStudent =
+                      admissions.find(s =>
+                        (s.studentId || '').trim().toUpperCase() === (examDoc.studentId || '').trim().toUpperCase() &&
+                        (s.fullName || '').trim().toLowerCase() === (examDoc.studentName || '').trim().toLowerCase()
+                      ) ||
+                      admissions.find(s =>
                         (s.studentId || '').trim().toUpperCase() === (examDoc.studentId || '').trim().toUpperCase()
+                      ) ||
+                      admissions.find(s =>
+                        (s.fullName || '').trim().toLowerCase() === (examDoc.studentName || '').trim().toLowerCase()
                       );
-                      if (targetStudent) {
+
+                    if (targetStudent) {
+                      if (bulkStatus === 'passed' && bulkPublish && examDoc.targetBelt) {
                         await updateDoc(doc(db, 'admissions', targetStudent.id), {
                           beltLevel: examDoc.targetBelt,
+                          updatedAt: Date.now()
+                        });
+                      } else if (bulkStatus === 'failed' && examDoc.currentBelt) {
+                        await updateDoc(doc(db, 'admissions', targetStudent.id), {
+                          beltLevel: examDoc.currentBelt,
                           updatedAt: Date.now()
                         });
                       }
@@ -8000,11 +8098,14 @@ export default function AdminPanel() {
                     setBulkGradingProgress({ current: completed, total: targetExams.length });
                   }
 
-                  alert(`Successfully evaluated and saved grades for ${completed} candidate(s)!`);
-                  setBulkGradingModalOpen(false);
+                  setBulkFeedbackMsg({ type: 'success', text: `Updated ${bulkStatus.toUpperCase()} + Grade ${bulkGrade} for ${completed} candidate(s)!` });
+                  setTimeout(() => {
+                    setBulkGradingModalOpen(false);
+                    setBulkFeedbackMsg(null);
+                  }, 1400);
                 } catch (err) {
                   console.error("Bulk grading failed:", err);
-                  alert("Failed to save bulk grades. Please check network connection and try again.");
+                  setBulkFeedbackMsg({ type: 'error', text: 'Failed to save bulk grades. Please retry.' });
                 } finally {
                   setBulkGradingSaving(false);
                 }
@@ -8014,16 +8115,26 @@ export default function AdminPanel() {
               <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-xl flex items-start space-x-2.5 text-xs text-emerald-300">
                 <span className="text-base shrink-0">🥋</span>
                 <p className="leading-relaxed">
-                  <strong className="font-bold text-emerald-200">Strict Exam Applicant Filter:</strong> Bulk grading applies <strong className="underline">ONLY</strong> to students who submitted an official Belt Exam Registration Form. General Dojo members who did not register for the exam are strictly excluded.
+                  <strong className="font-bold text-emerald-200">Strict Exam Applicant Filter:</strong> Bulk grading applies <strong className="underline">ONLY</strong> to registered Belt Exam applicants. General Dojo members who did not register are excluded.
                 </p>
               </div>
+
+              {bulkFeedbackMsg && (
+                <div className={`p-3 rounded-xl border text-xs font-bold text-center ${
+                  bulkFeedbackMsg.type === 'success'
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                    : 'bg-red-500/15 border-red-500/30 text-red-300'
+                }`}>
+                  {bulkFeedbackMsg.text}
+                </div>
+              )}
 
               {/* Target Candidate Selection */}
               <div className="space-y-2">
                 <label className="text-[10px] font-heading font-black text-zinc-300 uppercase tracking-wider block">
                   1. Select Target Exam Candidates Batch
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setBulkGradingScope('present')}
@@ -8033,8 +8144,8 @@ export default function AdminPanel() {
                         : 'bg-slate-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
-                    <span className="text-xs font-black block text-emerald-400">✓ Present Exam Candidates ({exams.filter(e => e.checkedIn).length})</span>
-                    <span className="text-[9px] text-zinc-400 block mt-0.5">Applied + Gate Checked-In Only</span>
+                    <span className="text-xs font-black block text-emerald-400">✓ Present ({exams.filter(e => e.checkedIn).length})</span>
+                    <span className="text-[9px] text-zinc-400 block mt-0.5">Gate Checked-In Only</span>
                   </button>
 
                   <button
@@ -8046,8 +8157,8 @@ export default function AdminPanel() {
                         : 'bg-slate-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
-                    <span className="text-xs font-black block text-purple-300">⏳ Present & Pending Grade ({exams.filter(e => e.checkedIn && (e.status === 'approved' || e.status === 'pending' || !e.grade)).length})</span>
-                    <span className="text-[9px] text-zinc-400 block mt-0.5">Applied + Checked-in + Un-evaluated</span>
+                    <span className="text-xs font-black block text-purple-300">⏳ Present Pending ({exams.filter(e => e.checkedIn && (e.status === 'approved' || e.status === 'pending' || !e.grade)).length})</span>
+                    <span className="text-[9px] text-zinc-400 block mt-0.5">Present & Un-graded</span>
                   </button>
 
                   <button
@@ -8059,10 +8170,74 @@ export default function AdminPanel() {
                         : 'bg-slate-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
-                    <span className="text-xs font-black block">All Exam Applicants ({exams.length})</span>
-                    <span className="text-[9px] text-zinc-400 block mt-0.5">All belt exam registrants</span>
+                    <span className="text-xs font-black block">All Applicants ({exams.length})</span>
+                    <span className="text-[9px] text-zinc-400 block mt-0.5">Every exam registrant</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBulkGradingScope('custom')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      bulkGradingScope === 'custom'
+                        ? 'bg-sky-500/15 border-sky-500 text-sky-300 ring-1 ring-sky-500/50'
+                        : 'bg-slate-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className="text-xs font-black block text-sky-300">☑️ Pick Manually ({bulkSelectedExamIds.length})</span>
+                    <span className="text-[9px] text-zinc-400 block mt-0.5">Check/uncheck students</span>
                   </button>
                 </div>
+
+                {bulkGradingScope === 'custom' && (
+                  <div className="bg-slate-950 border border-zinc-850 rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                    <div className="flex items-center justify-between text-[10px] pb-1 border-b border-zinc-900">
+                      <span className="text-zinc-400 font-bold uppercase">Select Exam Candidates:</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBulkSelectedExamIds(exams.map(x => x.id))}
+                          className="text-sky-400 hover:underline font-bold cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBulkSelectedExamIds([])}
+                          className="text-zinc-500 hover:text-white font-bold cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    {exams.map(ex => {
+                      const isPicked = bulkSelectedExamIds.includes(ex.id);
+                      return (
+                        <label
+                          key={ex.id}
+                          className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer text-xs ${
+                            isPicked ? 'bg-sky-500/10 border-sky-500/30 text-white' : 'bg-slate-900/50 border-zinc-850 text-zinc-400'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isPicked}
+                              onChange={() =>
+                                setBulkSelectedExamIds(prev =>
+                                  prev.includes(ex.id) ? prev.filter(id => id !== ex.id) : [...prev, ex.id]
+                                )
+                              }
+                              className="w-3.5 h-3.5 accent-sky-500"
+                            />
+                            <span className="font-bold uppercase truncate">{ex.studentName}</span>
+                            <span className="font-mono text-[10px] text-yellow-500 shrink-0">{ex.studentId}</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-400 shrink-0">{ex.targetBelt?.split(' (')[0]}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Candidate Count Preview Box */}
                 <div className="bg-slate-950 p-2.5 rounded-xl border border-zinc-850 flex items-center justify-between text-xs">
@@ -8074,8 +8249,10 @@ export default function AdminPanel() {
                       ? exams.filter(e => e.checkedIn).length
                       : bulkGradingScope === 'ungraded'
                       ? exams.filter(e => e.checkedIn && (e.status === 'approved' || e.status === 'pending' || !e.grade)).length
+                      : bulkGradingScope === 'custom'
+                      ? bulkSelectedExamIds.length
                       : exams.length}{' '}
-                    Exam Candidates (0 General Dojo Members)
+                    Exam Candidates
                   </span>
                 </div>
               </div>

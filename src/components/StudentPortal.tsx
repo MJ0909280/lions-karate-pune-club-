@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, generateSequentialStudentId } from '../firebase';
 import { safeLocalStorage } from '../utils/storage';
-import { Admission, BELT_LEVELS, DOJO_BRANCHES, calculateOverallGrade, DisciplineGrades } from '../types';
+import { Admission, BELT_LEVELS, DOJO_BRANCHES, calculateOverallGrade, DisciplineGrades, findBeltIndex, getNextBeltName } from '../types';
 import AttendanceTracker from './AttendanceTracker';
 import IDCard from './IDCard';
 import { 
@@ -47,7 +47,8 @@ import {
   Trophy,
   Flame,
   Star,
-  Sparkles
+  Sparkles,
+  Lock
 } from 'lucide-react';
 
 const DEFAULT_STUDENT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23111'><rect width='100' height='100' fill='%231a1a1a'/><circle cx='50' cy='35' r='14' fill='%23c9a96e'/><path d='M50 50 L35 75 L30 73 L42 53 L38 50 L30 55 L28 50 L40 42 Z' fill='%23fff'/><path d='M50 50 L65 80 L72 82 L58 55 L65 48 L75 52 L78 47 L60 40 Z' fill='%23fff'/><path d='M42 45 H58 V49 H42 Z' fill='%239B1B20'/></svg>";
@@ -157,9 +158,8 @@ const getRequiredClassesForCurrentBelt = (beltLevel: string): { required: number
 export const checkExamPassed = (exam: any): boolean => {
   if (!exam) return false;
   const s = (exam.status || '').toString().toLowerCase().trim();
-  if (s === 'failed' || s === 'rejected') return false;
-  if (s === 'passed' || s === 'promoted' || s === 'approved' || s === 'pass' || s === 'completed' || s === 'graduated') return true;
-  if (exam.isPublished !== false && s !== 'pending') return true;
+  if (s === 'failed' || s === 'rejected' || s === 'pending' || s === 'registered' || s === 'approved') return false;
+  if (s === 'passed' || s === 'promoted' || s === 'pass' || s === 'graduated') return true;
   return false;
 };
 
@@ -200,7 +200,7 @@ interface ExamRecord {
   coachName: string;
   currentBelt: string;
   targetBelt: string;
-  status: 'pending' | 'approved' | 'passed' | 'failed';
+  status: 'pending' | 'registered' | 'approved' | 'passed' | 'failed';
   feesStatus: 'Paid' | 'Pending';
   examScheduleId?: string;
   examDate?: string;
@@ -208,6 +208,11 @@ interface ExamRecord {
   grade?: string;
   remarks?: string;
   schoolName?: string;
+  checkedIn?: boolean;
+  checkInTime?: string;
+  resultViewLocked?: boolean;
+  resultViewedAt?: number;
+  resultViewedCount?: number;
   createdAt: number;
   updatedAt?: number;
   isPublished?: boolean;
@@ -729,6 +734,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
   const [selectedExamDateFilter, setSelectedExamDateFilter] = useState<string>('all');
   const [showIDCardModal, setShowIDCardModal] = useState(false);
 
+  // 1-Time Result View Lock per Roll ID (keeps unlocked only during current open viewing session)
+  const [sessionUnlockedExamIds, setSessionUnlockedExamIds] = useState<string[]>([]);
+  const lockTriggeredRef = React.useRef<Set<string>>(new Set());
+
   // Belt Progress Celebration states
   const [showCelebrationModal, setShowCelebrationModal] = useState(false);
   const [celebratedBeltName, setCelebratedBeltName] = useState<string>('Shotokan Belt');
@@ -1183,8 +1192,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
     doc.close();
   };
 
-  const handleDownloadCertificatePDF = async () => {
-    if (!selectedCert) return;
+  const handleDownloadCertificatePDF = async (certOverride?: ExamRecord | unknown) => {
+    const isExamObj = certOverride && typeof certOverride === 'object' && 'id' in certOverride && 'studentName' in certOverride;
+    const activeCert = isExamObj ? (certOverride as ExamRecord) : selectedCert;
+    if (!activeCert) return;
     setDownloadingCert(true);
     
     const originalStyles = new Map<HTMLElement, string>();
@@ -1325,7 +1336,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
 
       const opt = {
         margin:       0,
-        filename:     `LKC_Certificate_${selectedCert.studentName.replace(/\s+/g, '_')}.pdf`,
+        filename:     `LKC_Certificate_${(activeCert.studentName || 'Student').replace(/\s+/g, '_')}.pdf`,
         image:        { type: 'jpeg' as const, quality: 1.0 },
         html2canvas:  { scale: 2.5, useCORS: true, logging: false, letterRendering: true },
         jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'landscape' as const }
@@ -1717,6 +1728,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
   }, [registeredExams, selectedExamDateFilter]);
 
   // New Exam Form states
+  const [manualCurrentBelt, setManualCurrentBelt] = useState('');
   const [targetBelt, setTargetBelt] = useState('');
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
@@ -1962,15 +1974,13 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
       setParentName(matched.parentName || '');
       setParentPhone(matched.phone || '');
       setBranch(matched.branch || DOJO_BRANCHES[0].name);
+      setCoachName(matched.coachName || '');
       setSchoolName(matched.schoolName || '');
 
-      const studentBeltLevel = matched.beltLevel || '';
-      const currentIdx = BELT_LEVELS.findIndex(b => b.name && studentBeltLevel && (studentBeltLevel.trim().toLowerCase() === b.name.toLowerCase() || studentBeltLevel.toLowerCase().includes(b.name.toLowerCase())));
-      if (currentIdx !== -1 && currentIdx < BELT_LEVELS.length - 1) {
-        setTargetBelt(BELT_LEVELS[currentIdx + 1].name);
-      } else {
-        setTargetBelt(BELT_LEVELS[1].name);
-      }
+      const verifiedIdx = findBeltIndex(matched.beltLevel);
+      const verifiedBeltName = BELT_LEVELS[verifiedIdx]?.name || matched.beltLevel || BELT_LEVELS[0].name;
+      setManualCurrentBelt(verifiedBeltName);
+      setTargetBelt(getNextBeltName(verifiedBeltName));
     };
 
     const searchAllCollections = async () => {
@@ -2103,10 +2113,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
           return;
         }
 
-        // 2. Light fallback targeted scan across Admissions (limit 15 instead of 50 to conserve quota)
+        // 2. Fallback scan across Admissions (if indexed Roll ID search did not match)
         if (globalBestScore < 700) {
           try {
-            const admSnap = await getDocs(query(collection(db, 'admissions'), limit(15)));
+            const admSnap = await getDocs(query(collection(db, 'admissions'), limit(250)));
             admSnap.forEach((d) => {
               const { score, student } = evaluateDocMatch(d);
               if (score > globalBestScore && student) {
@@ -2123,10 +2133,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
           }
         }
 
-        // 3. Search Exams (limit 15)
+        // 3. Fallback scan across Exams (if still unmatched)
         if (globalBestScore < 700) {
           try {
-            const examSnap = await getDocs(query(collection(db, 'exams'), limit(15)));
+            const examSnap = await getDocs(query(collection(db, 'exams'), limit(250)));
             examSnap.forEach((d) => {
               const { score, student } = evaluateDocMatch(d);
               if (score > globalBestScore && student) {
@@ -2223,6 +2233,18 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
       if (isMounted) {
         setRegisteredExams(cleanRecords);
 
+        // Auto-detect highest verified belt across admission profile & any passed exam records
+        let highestIdx = findBeltIndex(activeStudent.beltLevel);
+        cleanRecords.forEach(r => {
+          if (checkExamPassed(r) && r.targetBelt) {
+            const idx = findBeltIndex(r.targetBelt);
+            if (idx > highestIdx) highestIdx = idx;
+          }
+        });
+        const detectedPrevBelt = BELT_LEVELS[highestIdx]?.name || activeStudent.beltLevel || BELT_LEVELS[0].name;
+        setManualCurrentBelt(detectedPrevBelt);
+        setTargetBelt(getNextBeltName(detectedPrevBelt));
+
         if (records.length > 0) {
           const realExamName = records.find(r => r.studentName && r.studentName.trim().toLowerCase() !== 'karate student')?.studentName 
             || records.find(r => (r as any).fullName && ((r as any).fullName as string).trim().toLowerCase() !== 'karate student')?.studentName;
@@ -2239,12 +2261,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
       }
     };
 
-    // 0. Check local exam cache first
-    const localResult = searchLocalCache(activeStudent.studentId || activeStudent.fullName);
-    if (localResult.exams && localResult.exams.length > 0) {
-      setRegisteredExams(localResult.exams);
-      setExamsLoading(false);
-    }
+    // Always query live Firestore for exam state so 1-time result lock and latest grades are authoritative
 
     // 1. Fetch via targeted indexed queries on exams collection
     const targetId = (activeStudent.studentId || '').trim();
@@ -2316,7 +2333,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
 
         if (examDocsMap.size === 0) {
           try {
-            const fallbackSnap = await getDocs(query(collection(db, 'exams'), limit(30)));
+            const fallbackSnap = await getDocs(query(collection(db, 'exams'), limit(250)));
             fallbackSnap.forEach(d => examDocsMap.set(d.id, d));
           } catch (e3) {}
         }
@@ -2335,6 +2352,51 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
       isMounted = false;
     };
   }, [activeStudent]);
+
+  // Enforce strict 1-Time Result View Lock when a published graded result is viewed on Check Results tab
+  useEffect(() => {
+    if (activeTab !== 'progress' || examsLoading || displayedExams.length === 0) return;
+
+    const toLock: ExamRecord[] = [];
+    displayedExams.forEach((exam) => {
+      const isGraded = exam.status === 'passed' || exam.status === 'failed' || checkExamPassed(exam);
+      const isPublished = isGraded && exam.isPublished !== false;
+      if (!isPublished || !exam.id) return;
+
+      // Only unlock & consume 1 view if it was not already locked in Firestore
+      if (exam.resultViewLocked !== true && !lockTriggeredRef.current.has(exam.id)) {
+        lockTriggeredRef.current.add(exam.id);
+        toLock.push(exam);
+      }
+    });
+
+    if (toLock.length === 0) return;
+
+    const newUnlockedIds = toLock.map(e => e.id);
+    setSessionUnlockedExamIds(prev => Array.from(new Set([...prev, ...newUnlockedIds])));
+
+    toLock.forEach(async (exam) => {
+      const now = Date.now();
+      const nextCount = (exam.resultViewedCount || 0) + 1;
+      try {
+        await updateDoc(doc(db, 'exams', exam.id), {
+          resultViewLocked: true,
+          resultViewedAt: now,
+          resultViewedCount: nextCount,
+          updatedAt: now
+        });
+        setRegisteredExams(prev =>
+          prev.map(item =>
+            item.id === exam.id
+              ? { ...item, resultViewLocked: true, resultViewedAt: now, resultViewedCount: nextCount }
+              : item
+          )
+        );
+      } catch (err) {
+        console.warn('Could not persist 1-time result view lock:', err);
+      }
+    });
+  }, [activeTab, examsLoading, displayedExams]);
 
   // Auto-detect when student's belt progress updates and trigger celebration
   useEffect(() => {
@@ -2378,6 +2440,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
     const searchId = normalizeSearchString(idToSearch).toUpperCase();
     if (!searchId) return;
 
+    // Reset open-session unlocked view set so subsequent lookups respect Firestore lock
+    setSessionUnlockedExamIds([]);
+    lockTriggeredRef.current.clear();
+
     setStudentIdInput(searchId);
     safeLocalStorage.setItem('lkcp_portal_student_id', searchId);
     setActiveStudentId(searchId);
@@ -2390,6 +2456,9 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
   };
 
   const handleLogoutPortal = () => {
+    setSessionUnlockedExamIds([]);
+    lockTriggeredRef.current.clear();
+    setManualCurrentBelt('');
     setActiveStudent(null);
     setActiveStudentId(null);
     setStudentIdInput('');
@@ -2531,7 +2600,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
         if (!activeStudent) throw new Error('Active student context missing');
         studentId = activeStudent.studentId;
         studentName = activeStudent.fullName;
-        currentBeltVal = activeStudent.beltLevel;
+        currentBeltVal = manualCurrentBelt || activeStudent.beltLevel;
       }
 
       const examData = {
@@ -2990,7 +3059,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
                         const schedId = e.target.value;
                         setSelectedScheduleId(schedId);
                         const matched = examSchedules.find(s => s.id === schedId);
-                        if (matched) {
+                        if (matched && !targetBelt) {
                           if (BELT_LEVELS.some(b => b.name === matched.beltLevel)) {
                             setTargetBelt(matched.beltLevel);
                           }
@@ -3371,7 +3440,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
                           const schedId = e.target.value;
                           setSelectedScheduleId(schedId);
                           const matched = examSchedules.find(s => s.id === schedId);
-                          if (matched) {
+                          if (matched && !targetBelt) {
                             if (BELT_LEVELS.some(b => b.name === matched.beltLevel)) {
                               setTargetBelt(matched.beltLevel);
                             }
@@ -3414,29 +3483,41 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
                       />
                     </div>
                     <div>
-                      <label className="text-zinc-500 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">Current Rank</label>
-                      <input 
-                        type="text" 
-                        disabled 
-                        value={activeStudent.beltLevel}
-                        className="w-full bg-slate-950 border border-zinc-900 text-zinc-500 text-xs px-3.5 py-2.5 rounded-lg"
-                      />
+                      <label className="text-zinc-400 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">
+                        Previous / Current Belt <span className="text-emerald-400">(Auto-Filled · Editable)</span>
+                      </label>
+                      <select
+                        required
+                        value={manualCurrentBelt || activeStudent.beltLevel}
+                        onChange={(e) => {
+                          const newCurr = e.target.value;
+                          setManualCurrentBelt(newCurr);
+                          setTargetBelt(getNextBeltName(newCurr));
+                        }}
+                        className="w-full bg-slate-950 border border-zinc-850 text-zinc-200 text-xs px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-yellow-500"
+                      >
+                        {BELT_LEVELS.map(belt => (
+                          <option key={belt.name} value={belt.name}>{belt.name}</option>
+                        ))}
+                      </select>
                     </div>
                     
                     <div>
-                      <label className="text-zinc-400 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">Belt Level Testing For (Next Belt) *</label>
+                      <label className="text-zinc-400 text-[9px] uppercase tracking-wider font-bold mb-1.5 block">
+                        Next Belt Testing For <span className="text-yellow-400">(Auto-Filled · Editable)</span> *
+                      </label>
                       <select
                         required
                         value={targetBelt}
                         onChange={(e) => setTargetBelt(e.target.value)}
-                        className="w-full bg-slate-950 border border-zinc-850 text-zinc-300 text-xs px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-yellow-500"
+                        className="w-full bg-slate-950 border border-zinc-850 text-zinc-200 text-xs px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-yellow-500"
                       >
                         <option value="">Select Target Belt</option>
                         {BELT_LEVELS.map(belt => (
                           <option 
                             key={belt.name} 
                             value={belt.name}
-                            disabled={belt.name === activeStudent.beltLevel}
+                            disabled={belt.name === (manualCurrentBelt || activeStudent.beltLevel)}
                           >
                             {belt.name}
                           </option>
@@ -3954,44 +4035,113 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
               {!examsLoading && displayedExams.length > 0 && (
                 <div className="grid grid-cols-1 gap-5">
                   {displayedExams.map((exam) => {
-                    const isResultPublished = true;
+                    const isGraded = exam.status === 'passed' || exam.status === 'failed' || checkExamPassed(exam);
+                    const isResultPublished = isGraded && exam.isPublished !== false;
                     const isPassed = checkExamPassed(exam);
+                    const isFailed = exam.status === 'failed';
+                    const isSessionUnlocked = sessionUnlockedExamIds.includes(exam.id);
+                    const isLockedAfterOneView = isResultPublished && exam.resultViewLocked === true && !isSessionUnlocked;
                     const gradeVal = getEffectiveGrade(exam);
+
+                    if (isLockedAfterOneView) {
+                      const viewedDateText = exam.resultViewedAt
+                        ? new Date(exam.resultViewedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'earlier';
+
+                      return (
+                        <div
+                          key={exam.id}
+                          className="bg-slate-900/70 border border-red-500/30 p-6 sm:p-8 rounded-2xl relative overflow-hidden shadow-xl text-center space-y-4"
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+                            <Lock className="w-6 h-6" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-red-400 block">
+                              1-Time View Limit Reached
+                            </span>
+                            <h4 className="font-heading font-black text-base sm:text-lg text-white uppercase">
+                              {exam.targetBelt?.split(' (')[0]} Belt Result Locked
+                            </h4>
+                            <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                              Result for <strong className="text-white">{activeStudent?.fullName || exam.studentName}</strong> (<span className="font-mono text-yellow-400">{activeStudent?.studentId || exam.studentId}</span>) was already viewed once ({viewedDateText}). Each Roll ID result can only be opened 1 time.
+                            </p>
+                          </div>
+                          <div className="pt-1">
+                            <a
+                              href={`https://wa.me/919049688172?text=${encodeURIComponent(
+                                `Hello Sensei Maruti Jadhav, I already viewed my child's ${exam.targetBelt} Belt Exam result once for Roll ID ${activeStudent?.studentId || exam.studentId} (${activeStudent?.fullName || exam.studentName}). Please unlock 1 more view from the Admin Panel.`
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-black text-[11px] uppercase tracking-wider px-5 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              <span>Request Sensei to Unlock View</span>
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div 
                         key={exam.id}
                         className="bg-slate-900/40 border border-zinc-850 p-4 sm:p-6 rounded-2xl relative overflow-hidden shadow-xl text-left space-y-4 hover:border-zinc-750 transition-colors w-full max-w-full min-w-0"
                       >
+                        {/* 1-Time View Active Notice when viewing a published result */}
+                        {isResultPublished && (
+                          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-2 text-[11px] text-amber-300 flex items-center gap-2 font-sans">
+                            <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>
+                              <strong>1-Time Result View Active:</strong> Please save or download your result/certificate now. This Roll ID result locks automatically once you leave or search again.
+                            </span>
+                          </div>
+                        )}
+
                         {/* Card Top Header: Exam Belt Title + Date + Grade/Status Badges */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-title font-black text-yellow-500 uppercase tracking-wider">
-                                {exam.targetBelt.split(' (')[0]} BELT EXAM RESULT
+                                {exam.targetBelt.split(' (')[0]} BELT EXAM {isResultPublished ? 'RESULT' : 'REGISTRATION'}
                               </span>
                               <span className="text-[10px] font-mono text-zinc-500">
                                 Applied On: {formatDate(exam.createdAt)}
                               </span>
+                              {exam.checkedIn && (
+                                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                                  ✓ Exam Hall Present ({exam.checkInTime || 'Checked-In'})
+                                </span>
+                              )}
                             </div>
                             <h4 className="text-sm sm:text-base font-extrabold text-white mt-1">
                               {activeStudent?.fullName || exam.studentName} <span className="text-zinc-500 font-mono text-xs">({activeStudent?.studentId || exam.studentId})</span>
                             </h4>
+                            <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                              Previous Belt: <span className="text-zinc-200">{exam.currentBelt?.split(' (')[0]}</span> → Exam For: <strong className="text-emerald-400">{exam.targetBelt?.split(' (')[0]}</strong>
+                            </p>
                           </div>
 
                           <div className="flex items-center space-x-2 shrink-0">
-                            <span className="text-[10.5px] font-mono text-zinc-300 bg-slate-950 px-3 py-1 rounded-lg border border-zinc-800 font-bold">
-                              GRADE: <strong className="text-yellow-400 font-extrabold">{gradeVal}</strong>
-                            </span>
-                            {isPassed ? (
-                              <span className="text-[10.5px] font-heading font-black uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/30">
-                                PASSED - BELT AWARDED 🎉
-                              </span>
-                            ) : (
-                              <span className="text-[10.5px] font-heading font-black uppercase text-amber-400 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30">
-                                {exam.status === 'pending' ? 'Result Pending' : 'Slot Approved'}
+                            {isResultPublished && (
+                              <span className="text-[10.5px] font-mono text-zinc-300 bg-slate-950 px-3 py-1 rounded-lg border border-zinc-800 font-bold">
+                                GRADE: <strong className="text-yellow-400 font-extrabold">{gradeVal}</strong>
                               </span>
                             )}
+                            {!isResultPublished ? (
+                              <span className="text-[10.5px] font-heading font-black uppercase text-amber-400 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30">
+                                {isGraded ? 'Result Preparing (Draft)' : exam.status === 'approved' ? 'Slot Approved · Result Pending' : 'Registration Pending'}
+                              </span>
+                            ) : isPassed ? (
+                              <span className="text-[10.5px] font-heading font-black uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/30">
+                                PASSED - {exam.targetBelt?.split(' (')[0]} AWARDED 🎉
+                              </span>
+                            ) : isFailed ? (
+                              <span className="text-[10.5px] font-heading font-black uppercase text-red-400 bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/30">
+                                REQUIRES RE-EVALUATION / RE-TEST
+                              </span>
+                            ) : null}
                           </div>
                         </div>
 
@@ -4050,10 +4200,10 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
                         {isResultPublished && (
                           <div className="bg-slate-950/60 p-3 border border-zinc-900 rounded-xl text-xs">
                             <span className="text-[8.5px] font-heading font-black text-amber-400 uppercase tracking-widest block mb-0.5">
-                              💬 SENSEI EVALUATION & FEEDBACK
+                              💬 SENSEI EVALUATION & REMARKS
                             </span>
                             <p className="text-zinc-300 italic text-[11px]">
-                              "{exam.remarks || "Outstanding spirit, discipline, and technical execution shown during the Karate Belt Examination!"}"
+                              "{exam.remarks || (isPassed ? "Outstanding spirit, discipline, and technical execution shown during the Karate Belt Examination!" : "Continue dedicated dojo practice and re-attempt your grading assessment with Sensei.")}"
                             </p>
                           </div>
                         )}
@@ -4075,7 +4225,7 @@ export default function StudentPortal({ initialTab = 'progress', initialStudentI
                               onClick={() => {
                                 setSelectedCert(exam);
                                 setTimeout(() => {
-                                  handleDownloadCertificatePDF();
+                                  handleDownloadCertificatePDF(exam);
                                 }, 300);
                               }}
                               className="bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/30 px-3.5 py-2.5 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer"
