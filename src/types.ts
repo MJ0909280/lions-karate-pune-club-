@@ -330,25 +330,18 @@ export function getUnpaidMonths(student: Admission, currentKey: string = getCurr
 
 export function generateMonthlyFeeWhatsAppMessage(student: Admission, unpaidMonths: string[]): string {
   const formattedMonthNames = unpaidMonths.map(formatMonthKey).join(', ');
-  const monthSummary = unpaidMonths.length === 1 
-    ? `for *${formattedMonthNames}*` 
-    : `for *${formattedMonthNames}* (Total: *${unpaidMonths.length} Months Pending*)`;
+  const periodText = unpaidMonths.length <= 1
+    ? `for *${formattedMonthNames || formatMonthKey(getCurrentMonthKey())}*`
+    : `for *${formattedMonthNames}* (${unpaidMonths.length} months)`;
 
   return `🥋 *LIONS KARATE CLUB PUNE*
-*Monthly Dojo Training Fee Reminder*
 
-Dear Parent of *${student.fullName}* (Student ID: *${student.studentId}*),
-🥋 *Branch:* ${student.branch || 'Manaji Nagar Branch'}
-🥋 *Belt Level:* ${student.beltLevel}
+Dear Parent of *${student.fullName}*,
 
-This is a gentle reminder that monthly karate training fees ${monthSummary} are pending. Dojo fees are collected between the *1st and 10th of every month*.
+This is a gentle reminder regarding the monthly karate training fee ${periodText}. Fees are kindly collected between the *1st and 10th of every month*.
 
-Kindly complete the payment at your earliest convenience to maintain continuous training and attendance records.
+Please complete the payment at your earliest convenience. If already paid, kindly ignore this message.
 
-For UPI / Cash payment details or receipt queries, please contact Chief Instructor:
-*Sensei Maruti Jadhav*
-📞 +91 90496 88172
-
-Thank you for your cooperation!
-OSS! 🥋`;
+Thank you!
+*Sensei Maruti Jadhav* · 📞 +91 90496 88172`;
 }

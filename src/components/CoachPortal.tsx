@@ -6,7 +6,7 @@ import {
   Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
   Admission, DOJO_BRANCHES, isExcludedSchool, 
@@ -141,12 +141,32 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     setShowPasscode(false);
   };
 
-  // Fetch Students & Attendance records when authenticated
+  // Fetch Students (once on auth/refresh) and date-filtered Attendance records
+  const fetchAttendanceForDate = async (targetDate: string) => {
+    try {
+      const attendanceQ = query(
+        collection(db, 'attendance_logs'),
+        where('date', '==', targetDate)
+      );
+      const attendanceSnap = await getDocs(attendanceQ);
+      const dailyMap: Record<string, 'present' | 'absent'> = {};
+      attendanceSnap.forEach((d) => {
+        const record = d.data();
+        if (record.studentId) {
+          dailyMap[record.studentId] = record.status === 'absent' ? 'absent' : 'present';
+        }
+      });
+      setAttendanceMap(dailyMap);
+    } catch (err) {
+      console.error('Failed to load attendance logs:', err);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch all admissions
+      // 1. Fetch admissions roster
       const admissionsSnap = await getDocs(collection(db, 'admissions'));
       const studentList: Admission[] = [];
       admissionsSnap.forEach((d) => {
@@ -160,16 +180,8 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
       studentList.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
       setStudents(studentList);
 
-      // 2. Fetch attendance logs for selected date
-      const attendanceSnap = await getDocs(collection(db, 'attendance_logs'));
-      const dailyMap: Record<string, 'present' | 'absent'> = {};
-      attendanceSnap.forEach((d) => {
-        const record = d.data();
-        if (record.date === selectedDate && record.studentId) {
-          dailyMap[record.studentId] = record.status === 'absent' ? 'absent' : 'present';
-        }
-      });
-      setAttendanceMap(dailyMap);
+      // 2. Fetch only selected date's attendance logs
+      await fetchAttendanceForDate(selectedDate);
     } catch (err) {
       console.error('Failed to load coach portal data:', err);
       setError('Failed to load student roster. Please check your internet connection and try again.');
@@ -182,7 +194,13 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     if (isAuthenticated) {
       fetchData();
     }
-  }, [isAuthenticated, selectedDate]);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated && students.length > 0) {
+      fetchAttendanceForDate(selectedDate);
+    }
+  }, [selectedDate]);
 
   // 3 Official Major Branches matching the website
   const majorBranches = DOJO_BRANCHES;

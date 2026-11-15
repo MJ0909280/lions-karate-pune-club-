@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { safeLocalStorage } from '../utils/storage';
-import { Admission, DOJO_BRANCHES, BATCH_TIMINGS } from '../types';
+import { Admission, DOJO_BRANCHES, BATCH_TIMINGS, getUnpaidMonths, generateMonthlyFeeWhatsAppMessage } from '../types';
 import { 
   Lock, 
   Unlock, 
@@ -418,19 +418,8 @@ export default function AttendanceTracker() {
     setMessageType(type);
     
     if (type === 'fees') {
-      const currentMonth = new Date().toLocaleString('en-US', { month: 'long' });
-      const currentYear = new Date().getFullYear();
-      const template = `[Reminder from LIONS KARATE CLUB Website]
-[Auto-generated Message]
-
-Dear Parent,
-
-A gentle reminder to pay the karate monthly fees of 700 Rs for ${student.fullName} for the month of ${currentMonth} ${currentYear}.
-
-📞 Sensei Maruti Jadhav
-9049688172
-
-Thank you.`;
+      const unpaidMonths = getUnpaidMonths(student);
+      const template = generateMonthlyFeeWhatsAppMessage(student, unpaidMonths);
       setCustomText(template);
     } else {
       const template = `Dear Parent, this is Sensei ${selectedCoach.split(' Sir')[0]} from Lions Karate Club Pune. Important Notice for ${student.fullName}: Please note that we have special karate practice sessions this week. Kindly ensure they attend on time. Thank you!`;
@@ -482,22 +471,10 @@ Thank you.`;
       return;
     }
 
-    const currentMonth = new Date().toLocaleString('en-US', { month: 'long' });
-    const currentYear = new Date().getFullYear();
-    
     let text = '';
     if (bulkMessageType === 'fees') {
-      text = `[Reminder from LIONS KARATE CLUB Website]
-[Auto-generated Message]
-
-Dear Parent,
-
-A gentle reminder to pay the karate monthly fees of 700 Rs for ${student.fullName} for the month of ${currentMonth} ${currentYear}.
-
-📞 Sensei Maruti Jadhav
-9049688172
-
-Thank you.`;
+      const unpaidMonths = getUnpaidMonths(student);
+      text = generateMonthlyFeeWhatsAppMessage(student, unpaidMonths);
     } else {
       text = `Dear Parent, this is Sensei ${selectedCoach.split(' Sir')[0]} from Lions Karate Club Pune. Important Notice for ${student.fullName}: Please note that we have special karate practice sessions this week. Kindly ensure they attend on time. Thank you!`;
     }
