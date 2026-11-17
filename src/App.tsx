@@ -12,7 +12,6 @@ import IDCard from './components/IDCard';
 import AdminPanel from './components/AdminPanel';
 import StudentPortal from './components/StudentPortal';
 import ExamCheckIn from './components/ExamCheckIn';
-import PresenceCheckIn from './components/PresenceCheckIn';
 import CoachPortal from './components/CoachPortal';
 import TrailerOverlay from './components/TrailerOverlay';
 import SEOConfig from './components/SEOConfig';
@@ -28,7 +27,6 @@ type ViewType =
   | 'student-portal'
   | 'checkin'
   | 'examiner-scoring'
-  | 'presence-checkin'
   | 'coach';
 
 export default function App() {
@@ -84,9 +82,6 @@ export default function App() {
         setShowTrailer(false);
         setView('student-portal');
         setStudentPortalTab('attendance');
-      } else if (hash.startsWith('#presence') || hash.startsWith('#qr-checkin')) {
-        setShowTrailer(false);
-        setView('presence-checkin');
       } else if (hash.startsWith('#checkin')) {
         setShowTrailer(false);
         setView('checkin');
@@ -176,10 +171,6 @@ export default function App() {
       window.location.hash = 'coach';
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setView('coach');
-    } else if (nextView === 'presence-checkin') {
-      window.location.hash = 'presence-checkin';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      setView('presence-checkin');
     } else if (nextView === 'checkin') {
       window.location.hash = 'checkin';
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -359,14 +350,7 @@ export default function App() {
         </main>
       )}
 
-      {/* VIEW 8: DAILY PRESENCE CHECK-IN */}
-      {view === 'presence-checkin' && (
-        <main className="flex-grow pt-24 pb-20">
-          <PresenceCheckIn onBackToHome={() => navigateTo('home')} />
-        </main>
-      )}
-
-      {/* VIEW 9: COACH MAT PORTAL */}
+      {/* VIEW 8: COACH MAT PORTAL */}
       {view === 'coach' && (
         <main className="flex-grow">
           <CoachPortal onBackToHome={() => navigateTo('home')} />

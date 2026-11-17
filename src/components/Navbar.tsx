@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, ShieldCheck, Lock, UserCheck, Award, GraduationCap, CalendarCheck } from 'lucide-react';
+import { Menu, X, ShieldCheck, Lock, UserCheck, Award, GraduationCap } from 'lucide-react';
 import { checkFirestoreConnection } from '../firebase';
 
 interface NavbarProps {
@@ -236,17 +236,6 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
             >
               <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span>Exam Check-In</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onNavigate('presence-checkin');
-              }}
-              className="p-3 rounded-lg bg-slate-900 border border-zinc-800 text-left text-xs font-heading font-bold uppercase text-zinc-200 flex items-center gap-1.5 cursor-pointer"
-            >
-              <CalendarCheck className="w-3.5 h-3.5 text-sky-400" />
-              <span>Daily Presence</span>
             </button>
             <button
               type="button"
