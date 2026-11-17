@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, generateSequentialStudentId } from '../firebase';
 import { BELT_LEVELS, BATCH_TIMINGS, BatchInfo, DOJO_BRANCHES } from '../types';
 import { saveStudentToLocalCache } from './StudentPortal';
-import { Upload, Camera, FileText, CheckCircle2, ShieldAlert, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
+import { Upload, Camera, FileText, CheckCircle2, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
 
 const DEFAULT_STUDENT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23111'><rect width='100' height='100' fill='%231a1a1a'/><circle cx='50' cy='35' r='14' fill='%23c9a96e'/><path d='M50 50 L35 75 L30 73 L42 53 L38 50 L30 55 L28 50 L40 42 Z' fill='%23fff'/><path d='M50 50 L65 80 L72 82 L58 55 L65 48 L75 52 L78 47 L60 40 Z' fill='%23fff'/><path d='M42 45 H58 V49 H42 Z' fill='%239B1B20'/></svg>";
 
@@ -13,7 +13,6 @@ interface AdmissionFormProps {
 }
 
 export default function AdmissionForm({ preselectedBatch = "", onSuccess }: AdmissionFormProps) {
-  // Core form states
   const [fullName, setFullName] = useState('');
   const [dob, setDob] = useState('');
   const [age, setAge] = useState<number | ''>('');
@@ -27,15 +26,13 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
   const [batches, setBatches] = useState<BatchInfo[]>(BATCH_TIMINGS);
   const [batch, setBatch] = useState(preselectedBatch || BATCH_TIMINGS[0].name);
   const [beltLevel, setBeltLevel] = useState(BELT_LEVELS[0].name);
-  const [photoUrl, setPhotoUrl] = useState(''); // Base64 data-url representing the compressed image
+  const [photoUrl, setPhotoUrl] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [sendEmailNotification, setSendEmailNotification] = useState(true);
 
-  // New states for branch and fees tracking
   const [selectedBranchId, setSelectedBranchId] = useState(DOJO_BRANCHES[0].id);
   const [feesStatus, setFeesStatus] = useState<'Paid' | 'Unpaid'>('Unpaid');
 
-  // Dynamically load batches from Firestore
   useEffect(() => {
     const fetchBatches = async () => {
       try {
@@ -61,7 +58,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     fetchBatches();
   }, [preselectedBatch]);
 
-  // UX states
   const [isDragOver, setIsDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMess, setErrorMess] = useState('');
@@ -69,10 +65,9 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
   const [phoneWarning, setPhoneWarning] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Debounced check for duplicate phone numbers
   useEffect(() => {
     const trimmed = phone.trim();
-    if (trimmed.length < 5) {
+    if (trimmed.length < 10) {
       setPhoneWarning('');
       return;
     }
@@ -103,7 +98,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     return () => clearTimeout(delayDebounce);
   }, [phone]);
 
-  // Hook to calculate age based on Date of Birth
   const handleDobChange = (e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setDob(val);
@@ -121,9 +115,7 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     setAge(calculatedAge >= 0 ? calculatedAge : 0);
   };
 
-  // Safe Image Compressor (Canvas Offscreen with Fallback)
   const compressAndProcessImage = (file: File) => {
-    // Check if image type or extension is image-like
     const isImageType = file.type ? file.type.startsWith('image/') : false;
     const isImageExt = /\.(jpg|jpeg|png|webp|heic|heif|bmp|svg|gif)$/i.test(file.name);
 
@@ -151,7 +143,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
 
       const img = new Image();
       img.onerror = () => {
-        // Fallback: If canvas fails or image format is non-standard, use DataURL directly if within safe length
         if (dataUrlResult.length < 3 * 1024 * 1024) {
           setPhotoUrl(dataUrlResult);
           setErrorMess('');
@@ -166,8 +157,8 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
           const canvas = document.createElement('canvas');
           const MAX_WIDTH = 300;
           const MAX_HEIGHT = 300;
-          let width = img.width || MAX_WIDTH;
-          let height = img.height || MAX_HEIGHT;
+          const width = img.width || MAX_WIDTH;
+          const height = img.height || MAX_HEIGHT;
 
           const size = Math.min(width, height);
           const offsetX = (width - size) / 2;
@@ -201,7 +192,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     reader.readAsDataURL(file);
   };
 
-  // Handle manual files input trigger
   const handlePhotoSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -209,7 +199,6 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     }
   };
 
-  // Drag and drop events
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -228,38 +217,34 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
     }
   };
 
-  // Form submit operations
   const handleSubmit = async (e: any) => {
     e.preventDefault();
     setErrorMess('');
 
-    // Field Validations
     if (!fullName.trim()) return setErrorMess('Full name is required.');
     if (!dob) return setErrorMess('Date of birth is required.');
     if (!gender) return setErrorMess('Gender is required.');
-    if (!phone.trim()) return setErrorMess('Contact phone is required.');
+    if (!phone.trim() || phone.trim().length < 5) return setErrorMess('Valid phone number is required.');
     if (!email.trim()) return setErrorMess('Email is required.');
-    if (!address.trim()) return setErrorMess('Physical address is required.');
+    if (!address.trim()) return setErrorMess('Residential address is required.');
     const finalPhotoUrl = photoUrl || DEFAULT_STUDENT_AVATAR;
-    if (!termsAccepted) return setErrorMess('You must accept the terms and conditions.');
+    if (!termsAccepted) return setErrorMess('You must accept the Dojo Terms & Conditions.');
 
     setLoading(true);
 
     try {
-      // Check if student's mobile/contact number already exists in Firestore 'admissions'
       const admissionsRef = collection(db, 'admissions');
       const qPhone = query(admissionsRef, where('phone', '==', phone.trim()));
       const snapPhone = await getDocs(qPhone);
       if (!snapPhone.empty) {
         const existingStudent = snapPhone.docs[0].data();
-        setErrorMess(`A student (${existingStudent.fullName || 'with this number'}) is already registered with this contact number: ${phone.trim()}.`);
+        setErrorMess(`A student (${existingStudent.fullName || 'with this number'}) is already registered with this mobile number: ${phone.trim()}.`);
         setLoading(false);
         return;
       }
 
       const studentId = await generateSequentialStudentId();
       const currentTimestamp = Date.now();
-
       const selectedBranch = DOJO_BRANCHES.find(b => b.id === selectedBranchId) || DOJO_BRANCHES[0];
 
       const admissionPayload = {
@@ -282,36 +267,31 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
         updatedAt: currentTimestamp,
         branch: selectedBranch.name,
         coachName: selectedBranch.coach,
-        feesStatus: feesStatus,
+        feesStatus,
         schoolName: schoolName.trim()
       };
 
-      // Add to firestore collection 'admissions'
       const docRef = await addDoc(collection(db, 'admissions'), admissionPayload);
 
-      // Save to local cache for instant sub-millisecond offline lookup
-      saveStudentToLocalCache({ id: docRef.id, ...admissionPayload } as any);
-
-      // Securely log an auto-indexing trigger in Firestore to notify GSC & AI crawlers
+      // Log SEO indexing notification
       try {
         await addDoc(collection(db, 'seo_indexing_logs'), {
-          studentId: studentId,
+          studentId,
           studentName: fullName.trim(),
           createdAt: currentTimestamp,
-          eventType: 'New Student Registry Sync Requested',
+          eventType: 'New Admission Registration Sync',
           sitemapUrl: 'https://lions-karate-club-pune.vercel.app/sitemap.xml',
           status: 'success',
           notifiedEngines: [
-            { name: 'Google Search Console API', status: 'pushed', detail: 'XML sitemap triggered. URL queued for live index crawling.' },
-            { name: 'Google-Extended (Gemini)', status: 'notified', detail: 'Local business details updated in AI crawler maps cache.' },
-            { name: 'GPTBot (ChatGPT)', status: 'notified', detail: 'Dispatched dynamic registration payload to LLM bot directories.' },
-            { name: 'Bing IndexNow API', status: 'pushed', detail: 'Triggered active indexing spider requested.' }
+            { name: 'Google Search Console API', status: 'pushed', detail: 'Registry sitemap pinged.' },
+            { name: 'Google-Extended (Gemini)', status: 'notified', detail: 'Dojo update queued.' }
           ]
         });
-      } catch (seoErr) {
-        console.error("Non-blocking error logging GSC/AI indexing:", seoErr);
+      } catch {
+        // Non-blocking SEO log
       }
 
+      saveStudentToLocalCache({ id: docRef.id, ...admissionPayload } as any);
       onSuccess(docRef.id);
     } catch (err: any) {
       console.error(err);
@@ -323,15 +303,16 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
   };
 
   return (
-    <div className="max-w-4xl mx-auto bg-[#141211]/95 border-2 border-stone-800 rounded-2xl p-5 sm:p-8 md:p-10 shadow-[0_20px_60px_rgba(0,0,0,0.85)] relative">
-      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 rounded-t-2xl" />
-
-      {/* Form header */}
-      <div className="flex items-center space-x-3 text-amber-500 mb-6 border-b border-stone-900 pb-6">
-        <FileText className="w-8 h-8 shrink-0 text-amber-500" />
+    <div className="max-w-4xl mx-auto bg-[#0a0909]/80 border border-stone-850 rounded-2xl p-5 sm:p-8 md:p-10 shadow-2xl relative">
+      <div className="flex items-center space-x-3 text-amber-500 mb-6 border-b border-stone-850 pb-6">
+        <FileText className="w-7 h-7 shrink-0" />
         <div>
-          <h3 className="font-heading text-xl sm:text-2xl font-black text-white uppercase tracking-wider">Online Dojo Admission Portal</h3>
-          <p className="text-stone-400 text-xs mt-0.5">Enroll now in LIONS KARATE CLUB PUNE by submitting active registry and passport profile details.</p>
+          <h3 className="font-heading text-xl sm:text-2xl font-black uppercase text-white tracking-wider">
+            LIONS KARATE CLUB PUNE — Official Admission Form
+          </h3>
+          <p className="text-stone-400 text-xs sm:text-sm mt-0.5">
+            Register at our Pune Dojos and generate your official Student Roll ID card immediately.
+          </p>
         </div>
       </div>
 
@@ -342,17 +323,14 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
         </div>
       )}
 
-      {/* Actual Form structure */}
       <form onSubmit={handleSubmit} className="space-y-8">
-        
         {/* Step 1: Student Photo Passport */}
         <div className="space-y-3 bg-[#141211]/50 border border-stone-850 p-5 rounded-xl">
           <span className="font-heading font-bold text-amber-500 uppercase text-xs tracking-wider block">
             📸 1. Student Passport Photo (For ID Card Generation)
           </span>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
-            {/* Visual drag-and-drop boundary */}
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -362,7 +340,7 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
                 isDragOver ? 'border-amber-500 bg-amber-500/5' : 'border-stone-800 bg-stone-950/40 hover:border-stone-700'
               }`}
             >
-              <input 
+              <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handlePhotoSelect}
@@ -374,11 +352,10 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
                 Tap to Take Photo / Choose File or <span className="text-amber-500 font-extrabold underline decoration-amber-500/30">Browse Gallery</span>
               </p>
               <span className="text-stone-500 text-[10px] mt-1 block">
-                Supports PNG, JPG, JPEG, WEBP, HEIC. Auto-cropped & compressed for ID pass cards.
+                Supports PNG, JPG, JPEG, WEBP, HEIC. Auto-cropped &amp; compressed for ID pass cards.
               </span>
             </div>
 
-            {/* Photo preview segment previewing precisely like a mini ID Card */}
             <div className="flex flex-col items-center justify-center p-3 bg-stone-950/85 border border-stone-850 rounded-xl h-[130px] relative">
               {photoUrl ? (
                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-amber-500">
@@ -400,7 +377,7 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
                     <Camera className="w-4 h-4 text-stone-500" />
                   </div>
                   <span className="text-[9px] uppercase font-black text-stone-500 tracking-wider">No Photo Selected</span>
-                  <span className="text-[8px] text-stone-600 mt-0.5 text-center leading-none">Uses a dapper silhouette if blank</span>
+                  <span className="text-[8px] text-stone-600 mt-0.5 text-center leading-none">Uses silhouette if blank</span>
                 </div>
               )}
             </div>
@@ -412,13 +389,13 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
           <span className="font-heading font-extrabold text-stone-300 uppercase text-xs tracking-wider block border-l-2 border-amber-500 pl-2">
             2. Core Student Credentials
           </span>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Full Student Name *</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Kenji Bradley"
+              <input
+                type="text"
+                placeholder="e.g. Aarav Kulkarni"
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -429,8 +406,8 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Date of Birth *</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   required
                   value={dob}
                   onChange={handleDobChange}
@@ -439,8 +416,8 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
               </div>
               <div>
                 <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1 opacity-80">Calculated Age</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   disabled
                   value={age !== '' ? `${age} yrs` : 'Select DOB'}
                   className="w-full bg-[#1c1917]/30 border border-stone-900 text-stone-500 rounded-lg px-3 py-3 text-xs font-mono font-bold focus:outline-none"
@@ -465,9 +442,9 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
 
             <div>
               <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">School / College / Institution Name</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Dynamic High School, Pune"
+              <input
+                type="text"
+                placeholder="e.g. Dynamic High School, Narhe"
                 value={schoolName}
                 onChange={(e) => setSchoolName(e.target.value)}
                 className="w-full bg-[#1c1917]/50 border border-stone-850 text-stone-100 rounded-lg px-3.5 py-3 text-xs focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all font-sans outline-none placeholder:text-stone-600"
@@ -476,9 +453,9 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
 
             <div>
               <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Parent/Guardian Name (Or leave blank if adult)</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Richard Bradley"
+              <input
+                type="text"
+                placeholder="e.g. Rajesh Kulkarni"
                 value={parentName}
                 onChange={(e) => setParentName(e.target.value)}
                 className="w-full bg-[#1c1917]/50 border border-stone-850 text-stone-100 rounded-lg px-3.5 py-3 text-xs focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all font-sans outline-none placeholder:text-stone-600"
@@ -490,15 +467,15 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
         {/* Step 3: Contact details */}
         <div className="space-y-4">
           <span className="font-heading font-extrabold text-stone-300 uppercase text-xs tracking-wider block border-l-2 border-amber-500 pl-2">
-            3. Contact Parameters & Address
+            3. Contact Parameters &amp; Address
           </span>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Student Phone *</label>
+              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Phone Number *</label>
               <div className="relative">
-                <input 
-                  type="tel" 
+                <input
+                  type="tel"
                   placeholder="e.g. 9049688172"
                   required
                   value={phone}
@@ -522,9 +499,9 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">WhatsApp phone (If different)</label>
-              <input 
-                type="tel" 
+              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">WhatsApp Number (If different)</label>
+              <input
+                type="tel"
                 placeholder="e.g. 9049688172"
                 value={whatsApp}
                 onChange={(e) => setWhatsApp(e.target.value)}
@@ -534,16 +511,16 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
 
             <div>
               <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Active Email Address *</label>
-              <input 
-                type="email" 
-                placeholder="e.g. student@example.com"
+              <input
+                type="email"
+                placeholder="e.g. parent@gmail.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-[#1c1917]/50 border border-stone-850 text-stone-100 rounded-lg px-3.5 py-3 text-xs focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all font-sans outline-none placeholder:text-stone-600"
               />
               <div className="mt-2.5 flex items-start space-x-2">
-                <input 
+                <input
                   type="checkbox"
                   id="send-email-copy"
                   checked={sendEmailNotification}
@@ -551,7 +528,7 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
                   className="mt-0.5 text-amber-500 accent-amber-500 cursor-pointer h-3.5 w-3.5 bg-stone-950 border-stone-800 rounded focus:ring-0 focus:ring-offset-0"
                 />
                 <label htmlFor="send-email-copy" className="text-stone-400 text-[10px] sm:text-xs leading-tight select-none cursor-pointer hover:text-stone-200 transition-colors">
-                  Send a digital copy of my registration & future notifications to this email.
+                  Send a digital copy of my registration &amp; future notifications to this email.
                 </label>
               </div>
               {sendEmailNotification && (
@@ -563,10 +540,10 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
             </div>
 
             <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Physical Dojo Address *</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Flat No, Society Name, Manajinager, Pune, MH 411041"
+              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Residential Address *</label>
+              <input
+                type="text"
+                placeholder="e.g. Flat No, Society Name, Manaji Nagar, Narhe, Pune 411041"
                 required
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
@@ -576,12 +553,12 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
           </div>
         </div>
 
-        {/* Step 4: Program selection */}
+        {/* Step 4: Dojo Branch & Batch Selection */}
         <div className="space-y-4">
           <span className="font-heading font-extrabold text-stone-300 uppercase text-xs tracking-wider block border-l-2 border-amber-500 pl-2">
-            4. Karate Branch, Batch, Belt & Induction params
+            4. Pune Dojo Branch, Batch &amp; Belt Level
           </span>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Dojo Branch Selection *</label>
@@ -635,19 +612,16 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Dojo Induction Induction Fees *</label>
+              <label className="block text-xs font-semibold text-stone-400 uppercase tracking-wide mb-1">Dojo Induction Fees *</label>
               <select
                 required
                 value={feesStatus}
                 onChange={(e: any) => setFeesStatus(e.target.value)}
                 className="w-full bg-[#1c1917]/90 border border-stone-850 text-stone-300 rounded-lg px-3.5 py-3 text-xs focus:outline-none focus:border-amber-500 transition-all cursor-pointer"
               >
-                <option value="Unpaid">Unpaid (Will settle during first lesson)</option>
+                <option value="Unpaid">Unpaid (Settle at Dojo / Trial Class)</option>
                 <option value="Paid">Paid (Induction fee already cleared)</option>
               </select>
-              <div className="mt-2 text-[10px] text-stone-500 text-left leading-normal">
-                Induction fees cover certification templates and syllabus handbook.
-              </div>
             </div>
           </div>
         </div>
@@ -655,31 +629,28 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
         {/* Step 5: Terms & Conditions */}
         <div className="space-y-4">
           <span className="font-heading font-extrabold text-stone-300 uppercase text-xs tracking-wider block border-l-2 border-amber-500 pl-2">
-            5. Parent/Guardian Declaration
+            5. Parent / Student Declaration
           </span>
           <div className="bg-[#141211]/80 border border-stone-850 rounded-xl p-5 space-y-4">
             <div className="text-stone-400 text-xs leading-relaxed max-h-48 overflow-y-auto pr-2 space-y-3 font-sans">
-              <p className="font-semibold text-amber-500 uppercase tracking-widest text-[10px]">LIONS KARATE CLUB PUNE — Parent/Guardian Declaration</p>
+              <p className="font-semibold text-amber-500 uppercase tracking-widest text-[10px]">LIONS KARATE CLUB PUNE — Declaration</p>
               <p>
                 I hereby declare that the information provided in this form is true and accurate to the best of my knowledge.
               </p>
               <p>
-                I voluntarily enroll myself/my child in the training programs conducted by LIONS KARATE CLUB PUNE and understand that martial arts training involves physical activity and inherent risks.
+                I voluntarily enroll my child/myself in the training programs conducted by LIONS KARATE CLUB PUNE and understand that martial arts training involves physical activity and inherent risks.
               </p>
               <p>
-                I confirm that I/my child is medically fit to participate in training activities. Any medical condition, injury, or health concern has been disclosed to the club.
-              </p>
-              <p>
-                I consent to the use of photographs, videos, and personal details for student identification, certificates, competitions, club records, website content, and promotional activities.
+                I confirm that the student is medically fit to participate in training activities. Any medical condition, injury, or health concern has been disclosed to the club.
               </p>
               <p>
                 I agree to abide by all rules, regulations, safety guidelines, and fee policies of LIONS KARATE CLUB PUNE.
               </p>
             </div>
-            
+
             <div className="pt-3.5 border-t border-stone-900 flex items-start space-x-3">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 id="accept-dojo-terms"
                 required
                 checked={termsAccepted}
@@ -687,33 +658,32 @@ export default function AdmissionForm({ preselectedBatch = "", onSuccess }: Admi
                 className="mt-0.5 text-amber-500 accent-amber-500 cursor-pointer h-4 w-4 bg-stone-950 border-stone-800 rounded"
               />
               <label htmlFor="accept-dojo-terms" className="text-stone-300 text-xs leading-relaxed select-none cursor-pointer font-medium hover:text-white transition-colors">
-                I have read, understood and agree to the entire parent declaration and dojo intent policies.
+                I have read, understood, and agree to the declaration and safety guidelines.
               </label>
             </div>
           </div>
         </div>
 
-        {/* Bottom CTA trigger */}
+        {/* Bottom CTA */}
         <div className="pt-5 border-t border-stone-900/60 flex justify-end">
           <button
             type="submit"
             disabled={loading}
-            className="w-full sm:w-auto flex items-center justify-center space-x-2 font-heading font-black text-xs uppercase tracking-widest bg-amber-500 hover:bg-amber-400 disabled:bg-stone-900 disabled:text-stone-600 ring-2 ring-amber-500/25 text-slate-950 px-8 py-4 rounded-full shadow-xl hover:shadow-amber-500/10 transition-all duration-300 active:scale-95 cursor-pointer"
+            className="w-full sm:w-auto flex items-center justify-center space-x-2 font-heading font-black text-xs uppercase tracking-[0.2em] bg-[#9B1B20] hover:bg-red-500 disabled:bg-stone-900 disabled:text-stone-600 text-white px-8 py-4 shadow-xl transition-all duration-200 cursor-pointer"
           >
             {loading ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>PROCESSING SECURE TRANSACTIONS...</span>
+                <span>SUBMITTING REGISTRATION...</span>
               </>
             ) : (
               <>
-                <span>SUBMIT OFfICIAL DOJO REGISTRY</span>
+                <span>SUBMIT OFFICIAL ADMISSION</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
           </button>
         </div>
-
       </form>
     </div>
   );

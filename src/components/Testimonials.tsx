@@ -1,129 +1,80 @@
-import { Star, Quote, MessageSquareDot } from 'lucide-react';
-
-interface Testimonial {
-  text: string;
-  author: string;
-  role: string;
-  rating: number;
-}
+import { Star, Quote, Play } from 'lucide-react';
 
 export default function Testimonials() {
-  const testimonials: Testimonial[] = [
+  const testimonials = [
     {
-      text: "The discipline Aarav learned here is amazing! His focus in school has completely transformed, and he has become so much more respectful and protective of others.",
-      author: "Rajesh Kulkarni",
-      role: "Parent of Aarav (9, Orange Belt Student)",
-      rating: 5
+      text: 'The discipline Aarav learned here is remarkable. His focus at school improved noticeably, and he carries himself with genuine respect.',
+      author: 'Rajesh Kulkarni',
+      role: 'Parent of Aarav (Age 9, Orange Belt)'
     },
     {
-      text: "This is the best karate academy in Pune. The coaches are extremely supportive yet firm. Ananya's confidence and self-defense posture have boosted remarkably!",
-      author: "Priya Sharma",
-      role: "Parent of Ananya (7, Yellow Belt Student)",
-      rating: 5
+      text: 'Coaches are supportive yet structured. Within months, Ananya built real self-defense awareness, stronger fitness, and lasting confidence.',
+      author: 'Priya Sharma',
+      role: 'Parent of Ananya (Age 7, Yellow Belt)'
     },
     {
-      text: "LIONS KARATE is superb. My son Kabir is energetic, athletic, and highly disciplined now. He secured a gold medal in the regional Kumite championship!",
-      author: "Amit Deshmukh",
-      role: "Parent of Kabir (11, Green Belt Student)",
-      rating: 5
+      text: 'My son Kabir channels his energy productively now and won a gold medal in regional Kumite. Truly the best karate dojo in Narhe Pune.',
+      author: 'Amit Deshmukh',
+      role: 'Parent of Kabir (Age 11, Green Belt)'
     }
   ];
 
   return (
-    <div className="relative overflow-hidden py-4">
-      {/* Decorative vertical alignment typography Kanji */}
-      <div className="absolute top-10 right-10 opacity-[0.03] hidden xl:block select-none pointer-events-none text-right">
-        <div className="font-kanji text-[10rem] leading-none text-yellow-500 font-extrabold tracking-widest writing-vertical">
-          感謝
-        </div>
+    <div id="testimonials" className="space-y-8">
+      <div>
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-amber-500 font-bold block mb-1.5">
+          ⭐ PUNE PARENT FEEDBACK
+        </span>
+        <h2 className="font-heading text-2xl sm:text-3xl font-black uppercase tracking-wider text-white">
+          Trusted by Pune Families
+        </h2>
+        <p className="text-zinc-400 text-xs sm:text-sm mt-1">
+          Real reviews and video reflections from parents of Lions Karate Club Pune students.
+        </p>
       </div>
 
-      <div className="w-full relative z-10">
-        
-
-
-        {/* 2-Column Bento Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          
-          {/* Column 1: Parents' Video Testimonial - 5 Columns */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="relative bg-slate-900 border border-zinc-800/80 rounded-2xl overflow-hidden shadow-2xl">
-              <div className="p-5 border-b border-zinc-900 bg-slate-900/55 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">PARENT VIDEO TESTIMONIAL</span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="lg:col-span-7 grid grid-cols-1 gap-4">
+          {testimonials.map((t) => (
+            <div
+              key={t.author}
+              className="bg-slate-900/50 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 text-amber-400">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className="w-3.5 h-3.5 fill-current" />
+                  ))}
                 </div>
-                <div className="p-1 px-2.5 bg-yellow-500/10 text-yellow-500 rounded text-[9px] font-heading font-black tracking-wider uppercase">
-                  LIONS KARATE
-                </div>
+                <Quote className="w-4 h-4 text-zinc-700" />
               </div>
-
-              {/* Vertical Mobile Video Aspect Feed Container */}
-              <div className="relative aspect-[9/16] max-h-[580px] w-full mx-auto bg-black flex items-center justify-center">
-                <video
-                  src="https://res.cloudinary.com/dlzdagymx/video/upload/q_auto/f_auto/v1781347453/Check_out_the_full_video_to_see_what_parents_think_of_our_program_At_LIONS_KARATE_CLUB_PUNE_l5vhas.mp4"
-                  controls
-                  playsInline
-                  preload="metadata"
-                  className="w-full h-full object-cover brightness-95"
-                />
-              </div>
-
-              <div className="p-5 bg-slate-900 border-t border-zinc-900">
-                <h4 className="font-heading font-black text-xs text-white uppercase tracking-wider mb-1.5 flex items-center gap-2">
-                  <MessageSquareDot className="w-4 h-4 text-yellow-500" />
-                  How Parents Think of our Dojo
-                </h4>
-                <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
-                  Press study play to check out raw, verified feedback directly from parents speaking on student character growth and confidence.
-                </p>
+              <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic">“{t.text}”</p>
+              <div className="pt-2 border-t border-zinc-800/70">
+                <span className="font-heading font-bold text-xs text-white block">{t.author}</span>
+                <span className="font-mono text-[10px] text-zinc-400">{t.role}</span>
               </div>
             </div>
-          </div>
-
-          {/* Column 2: Written Feed - 7 Columns */}
-          <div className="lg:col-span-7 space-y-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {testimonials.map((t, idx) => (
-                <div 
-                  key={idx} 
-                  className={`relative bg-slate-900/40 border border-zinc-900/80 rounded-xl p-7 hover:border-yellow-500/10 transition-colors flex flex-col justify-between ${
-                    idx === 2 ? 'sm:col-span-2' : ''
-                  }`}
-                >
-                  <div className="absolute top-6 right-6 text-zinc-800">
-                    <Quote className="w-8 h-8 rotate-180 opacity-20" />
-                  </div>
-
-                  {/* Text content details */}
-                  <div className="mb-6">
-                    {/* Stars Indicator */}
-                    <div className="flex space-x-1 text-yellow-500 mb-4">
-                      {[...Array(t.rating)].map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-yellow-500" />
-                      ))}
-                    </div>
-                    <p className="text-zinc-350 text-sm italic leading-relaxed font-light">
-                      "{t.text}"
-                    </p>
-                  </div>
-
-                  {/* Author bio specs */}
-                  <div className="pt-4 border-t border-zinc-850 inline-flex flex-col">
-                    <span className="font-heading font-bold text-zinc-100 uppercase text-xs tracking-wider">
-                      {t.author}
-                    </span>
-                    <span className="text-zinc-500 text-[10px] mt-0.5 font-medium">
-                      {t.role}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
+          ))}
         </div>
 
+        <div className="lg:col-span-5 bg-slate-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-zinc-900 flex items-center justify-between">
+            <span className="font-heading font-black text-xs uppercase tracking-wider text-white flex items-center gap-2">
+              <Play className="w-3.5 h-3.5 text-red-500" />
+              <span>Parent Video Testimonial</span>
+            </span>
+            <span className="font-mono text-[10px] text-amber-500">LIONS KARATE</span>
+          </div>
+          <div className="flex-grow bg-black flex items-center justify-center">
+            <video
+              src="https://res.cloudinary.com/dlzdagymx/video/upload/q_auto/f_auto/v1781347453/Check_out_the_full_video_to_see_what_parents_think_of_our_program_At_LIONS_KARATE_CLUB_PUNE_l5vhas.mp4"
+              controls
+              playsInline
+              preload="metadata"
+              className="w-full max-h-[420px] object-contain"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

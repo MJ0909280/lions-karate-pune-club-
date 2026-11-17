@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Lock, Unlock, ShieldCheck, Users, CheckCircle2, XCircle, 
   Calendar, MapPin, Search, MessageCircle, CheckCheck, 
-  AlertCircle, LogOut, RefreshCw, Award, ArrowLeft, Filter, Phone,
-  Eye, EyeOff
+  AlertCircle, LogOut, RefreshCw, ArrowLeft, Phone,
+  Eye, EyeOff, LayoutGrid, Target, ChevronLeft, ChevronRight,
+  SkipForward, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, getDocs, doc, setDoc, updateDoc, query, where } from 'firebase/firestore';
@@ -49,6 +50,11 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [batchSaving, setBatchSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Mindful UI Mode & Client-side Filters (0 extra Firebase reads)
+  const [viewMode, setViewMode] = useState<'focus' | 'cards'>('cards');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unmarked' | 'present' | 'absent' | 'fees-due'>('all');
+  const [focusIndex, setFocusIndex] = useState<number>(0);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -272,22 +278,57 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     return found ? found.coach : 'Chief Instructor Maruti Jadhav';
   }, [selectedBranch, majorBranches]);
 
-  // Attendance metrics
+  // Attendance & Fee metrics (computed locally in memory)
   const metrics = useMemo(() => {
     let presentCount = 0;
     let absentCount = 0;
+    let feesDueCount = 0;
     filteredStudents.forEach(s => {
       const status = attendanceMap[s.studentId];
       if (status === 'present') presentCount++;
       else if (status === 'absent') absentCount++;
+      if (getUnpaidMonths(s, currentMonthKey).length > 0) {
+        feesDueCount++;
+      }
     });
+    const marked = presentCount + absentCount;
+    const total = filteredStudents.length;
+    const progressPct = total > 0 ? Math.round((marked / total) * 100) : 0;
     return {
-      total: filteredStudents.length,
+      total,
       present: presentCount,
       absent: absentCount,
-      pending: filteredStudents.length - (presentCount + absentCount)
+      pending: total - marked,
+      marked,
+      progressPct,
+      feesDue: feesDueCount
     };
-  }, [filteredStudents, attendanceMap]);
+  }, [filteredStudents, attendanceMap, currentMonthKey]);
+
+  // Client-side filtered list by status chip (0 extra Firebase reads)
+  const displayStudents = useMemo(() => {
+    const list = filteredStudents.filter(s => {
+      const status = attendanceMap[s.studentId];
+      if (statusFilter === 'unmarked') return !status;
+      if (statusFilter === 'present') return status === 'present';
+      if (statusFilter === 'absent') return status === 'absent';
+      if (statusFilter === 'fees-due') return getUnpaidMonths(s, currentMonthKey).length > 0;
+      return true;
+    });
+    return list;
+  }, [filteredStudents, attendanceMap, statusFilter, currentMonthKey]);
+
+  // Keep focusIndex safely inside bounds
+  useEffect(() => {
+    if (displayStudents.length === 0) {
+      setFocusIndex(0);
+    } else if (focusIndex >= displayStudents.length) {
+      setFocusIndex(displayStudents.length - 1);
+    }
+  }, [displayStudents.length, focusIndex]);
+
+  // Unmarked queue for calm Focus Mode progression
+  const unmarkedCount = metrics.pending;
 
   // Mark Individual Student Attendance
   const handleMarkAttendance = async (student: Admission, status: 'present' | 'absent') => {
@@ -353,16 +394,21 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     }
   };
 
-  // Mark All Present in current filtered view
+  // Mark All Remaining Present (skips students already marked Present to save Firebase writes!)
   const handleMarkAllPresent = async () => {
-    if (filteredStudents.length === 0) return;
+    const studentsToUpdate = filteredStudents.filter(
+      s => Boolean(s.studentId) && attendanceMap[s.studentId] !== 'present'
+    );
+    if (studentsToUpdate.length === 0) {
+      showToast('All students in this branch are already marked PRESENT!');
+      return;
+    }
     setBatchSaving(true);
 
     const updatedMap = { ...attendanceMap };
     const promises: Promise<void>[] = [];
 
-    for (const student of filteredStudents) {
-      if (!student.studentId) continue;
+    for (const student of studentsToUpdate) {
       updatedMap[student.studentId] = 'present';
       const docKey = `${student.studentId}_${selectedDate}`;
       const docRef = doc(db, 'attendance_logs', docKey);
@@ -385,7 +431,7 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
 
     try {
       await Promise.all(promises);
-      showToast(`All ${filteredStudents.length} students marked PRESENT!`);
+      showToast(`Marked ${studentsToUpdate.length} student${studentsToUpdate.length === 1 ? '' : 's'} PRESENT!`);
     } catch (err) {
       console.error('Batch attendance save error:', err);
       showToast('Error saving batch attendance.');
@@ -553,19 +599,29 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
     );
   }
 
+  const handleFocusMark = async (student: Admission, status: 'present' | 'absent') => {
+    await handleMarkAttendance(student, status);
+    if (focusIndex < displayStudents.length - 1) {
+      setFocusIndex(prev => prev + 1);
+    }
+  };
+
+  const focusedStudent = displayStudents[focusIndex] || null;
+  const remainingToMarkPresent = filteredStudents.filter(s => attendanceMap[s.studentId] !== 'present').length;
+
   // ----------------------------------------------------
   // Render: Authenticated Coach Portal Dashboard
   // ----------------------------------------------------
   return (
     <div className="min-h-screen bg-slate-950 text-white pt-24 pb-20 px-4 sm:px-6 lg:px-8">
-      {/* Toast Notification */}
+      {/* Calm Toast Notification */}
       <AnimatePresence>
         {toastMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            initial={{ opacity: 0, y: -16, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/40 text-emerald-400 px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-2 text-xs font-semibold backdrop-blur-md"
+            exit={{ opacity: 0, y: -16, scale: 0.96 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/40 text-emerald-300 px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 text-xs font-semibold backdrop-blur-md"
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{toastMessage}</span>
@@ -573,335 +629,544 @@ export default function CoachPortal({ onBackToHome }: CoachPortalProps) {
         )}
       </AnimatePresence>
 
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Top Header Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/80 border border-zinc-800 rounded-2xl p-4 sm:p-6 backdrop-blur-md">
+      <div className="max-w-6xl mx-auto space-y-5">
+        {/* Top Calm Header Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/75 border border-zinc-800/90 rounded-2xl p-4 sm:p-6">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-xs font-mono text-yellow-500 font-bold uppercase tracking-wider">
-              <ShieldCheck className="w-4 h-4 text-yellow-500" />
-              <span>AUTHORIZED COACH MAT PORTAL</span>
+            <div className="flex items-center space-x-2 text-[11px] font-mono text-amber-400 font-bold uppercase tracking-widest">
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>Coach Mat Portal · {currentBranchCoach}</span>
             </div>
-            <h1 className="font-heading text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
-              DAILY ATTENDANCE & FEE REMINDERS
+            <h1 className="font-heading text-xl sm:text-2xl font-black uppercase tracking-tight text-white">
+              Daily Roll Call &amp; Fee Check
             </h1>
-            <p className="text-zinc-400 text-xs">
-              Select your dojo branch, record student presence, and send 1-click WhatsApp monthly fee reminders.
-            </p>
           </div>
 
-          <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-1.5 bg-slate-950 border border-zinc-800 rounded-xl p-1">
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                aria-label="Attendance Date"
+                className="bg-transparent px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors"
+              >
+                Today
+              </button>
+            </div>
+
             <button
+              type="button"
               onClick={fetchData}
               disabled={loading}
-              className="p-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+              className="p-2.5 rounded-xl bg-slate-950 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
               title="Refresh student roster"
+              aria-label="Refresh student roster"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
+
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-colors cursor-pointer"
+              className="flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-colors cursor-pointer"
               title="Lock portal session"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Lock Portal</span>
+              <span className="hidden sm:inline">Lock</span>
             </button>
           </div>
         </div>
 
-        {/* Controls Card: Branch Filter, Date Picker, and Search */}
-        <div className="bg-slate-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Branch Selection */}
-            <div>
-              <label className="block text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                <MapPin className="w-3.5 h-3.5 text-yellow-500" />
-                <span>Select Training Branch</span>
-              </label>
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full bg-slate-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-yellow-500 transition-colors cursor-pointer font-bold"
-              >
-                {majorBranches.map(b => (
-                  <option key={b.id} value={b.name}>
-                    {b.name} ({branchCounts[b.name] || 0} registered)
-                  </option>
-                ))}
-              </select>
-              <div className="mt-1.5 flex items-center space-x-1.5 text-[11px] text-zinc-400 font-mono">
-                <span className="text-yellow-500 font-bold">Coach:</span>
-                <span className="truncate text-zinc-300 font-semibold">{currentBranchCoach}</span>
-              </div>
+        {/* 1-Tap Branch Pills + Search + View Switch */}
+        <div className="bg-slate-900/75 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            {/* Branch Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              {majorBranches.map(b => {
+                const isSelected = selectedBranch === b.name;
+                const shortLabel = b.name.replace(' Branch', '');
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch(b.name);
+                      setFocusIndex(0);
+                    }}
+                    className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      isSelected
+                        ? 'bg-red-600/20 border-red-500/60 text-white shadow-sm'
+                        : 'bg-slate-950/70 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                    }`}
+                  >
+                    <MapPin className={`w-3.5 h-3.5 ${isSelected ? 'text-red-400' : 'text-zinc-500'}`} />
+                    <span>{shortLabel}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md font-mono text-[10px] ${
+                      isSelected ? 'bg-red-500/30 text-red-200' : 'bg-zinc-900 text-zinc-500'
+                    }`}>
+                      {branchCounts[b.name] || 0}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Date Selection */}
-            <div>
-              <label className="block text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                <Calendar className="w-3.5 h-3.5 text-red-500" />
-                <span>Attendance Date</span>
-              </label>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-red-500 transition-colors font-mono"
-                />
-                <button
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                  className="px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors"
-                >
-                  Today
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Student Search */}
-            <div>
-              <label className="block text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                <Search className="w-3.5 h-3.5 text-blue-400" />
-                <span>Find Student / Roll No</span>
-              </label>
-              <div className="relative">
+            {/* Search & Mode Toggle */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <div className="relative flex-1 sm:w-64">
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by student name, ID, parent, or phone..."
-                  className="w-full bg-slate-950 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-400 transition-colors"
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setFocusIndex(0);
+                  }}
+                  placeholder="Search name, Roll ID, phone..."
+                  className="w-full bg-slate-950 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-400 transition-colors"
                 />
-                <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
+                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" />
+              </div>
+
+              <div className="inline-flex bg-slate-950 border border-zinc-800 rounded-xl p-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('focus');
+                    setFocusIndex(0);
+                  }}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'focus'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Target className="w-3.5 h-3.5" />
+                  <span>Focus 1-by-1</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'cards'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Cards</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Quick Metrics & Batch Action Bar */}
-          <div className="pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className="text-zinc-400">
-                Roster: <strong className="text-white font-mono">{metrics.total}</strong>
-              </span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-emerald-400 flex items-center gap-1 font-semibold">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Present: <strong className="font-mono">{metrics.present}</strong></span>
-              </span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-red-400 flex items-center gap-1 font-semibold">
-                <XCircle className="w-3.5 h-3.5" />
-                <span>Absent: <strong className="font-mono">{metrics.absent}</strong></span>
-              </span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-zinc-500 font-mono">
-                Unmarked: <strong>{metrics.pending}</strong>
-              </span>
+          {/* Live Roll-Call Progress Bar & Action */}
+          <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="font-mono font-bold text-white">
+                  Roll Call: {metrics.marked} / {metrics.total} ({metrics.progressPct}%)
+                </span>
+                {metrics.total > 0 && unmarkedCount === 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
+                    <Sparkles className="w-3 h-3" />
+                    <span>Class Complete! Osu!</span>
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleMarkAllPresent}
+                disabled={batchSaving || remainingToMarkPresent === 0}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-40"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>
+                  {remainingToMarkPresent === 0
+                    ? 'All Present'
+                    : `Mark ${remainingToMarkPresent} Remaining Present`}
+                </span>
+              </button>
             </div>
 
-            <button
-              onClick={handleMarkAllPresent}
-              disabled={batchSaving || filteredStudents.length === 0}
-              className="flex items-center space-x-2 px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
-            >
-              <CheckCheck className="w-4 h-4" />
-              <span>Mark All {filteredStudents.length} Present</span>
-            </button>
+            {/* Smooth Progress Track */}
+            <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-zinc-800/80">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-400 transition-all duration-300"
+                style={{ width: `${metrics.progressPct}%` }}
+              />
+            </div>
+
+            {/* Instant Client-side Status Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {[
+                { id: 'all' as const, label: `All (${metrics.total})` },
+                { id: 'unmarked' as const, label: `Unmarked (${metrics.pending})` },
+                { id: 'present' as const, label: `Present (${metrics.present})` },
+                { id: 'absent' as const, label: `Absent (${metrics.absent})` },
+                { id: 'fees-due' as const, label: `Fees Due (${metrics.feesDue})` }
+              ].map(chip => {
+                const active = statusFilter === chip.id;
+                return (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(chip.id);
+                      setFocusIndex(0);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer border ${
+                      active
+                        ? 'bg-zinc-100 text-slate-950 border-zinc-100'
+                        : 'bg-slate-950/70 text-zinc-400 border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Student Roster Table */}
-        <div className="bg-slate-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
-          {loading ? (
-            <div className="py-20 text-center space-y-3">
-              <RefreshCw className="w-8 h-8 text-yellow-500 animate-spin mx-auto" />
-              <p className="text-zinc-400 text-xs font-mono">Loading branch student roster...</p>
-            </div>
-          ) : error ? (
-            <div className="py-16 text-center space-y-3 text-red-400 p-6">
-              <AlertCircle className="w-8 h-8 mx-auto" />
-              <p className="text-sm">{error}</p>
+        {/* Main Content Area: Loading / Error / Empty / Focus Mode / Cards Grid */}
+        {loading ? (
+          <div className="bg-slate-900/60 border border-zinc-800 rounded-2xl py-20 text-center space-y-3">
+            <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+            <p className="text-zinc-400 text-xs font-mono">Loading branch student roster...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-slate-900/60 border border-zinc-800 rounded-2xl py-16 text-center space-y-3 text-red-400 p-6">
+            <AlertCircle className="w-8 h-8 mx-auto" />
+            <p className="text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={fetchData}
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : displayStudents.length === 0 ? (
+          <div className="bg-slate-900/60 border border-zinc-800 rounded-2xl py-16 text-center space-y-3 p-6">
+            <Users className="w-10 h-10 text-zinc-600 mx-auto" />
+            <h3 className="text-base font-bold text-zinc-200">
+              {statusFilter === 'unmarked' && metrics.total > 0
+                ? 'All students are marked!'
+                : 'No students match this filter'}
+            </h3>
+            <p className="text-zinc-400 text-xs max-w-sm mx-auto">
+              {statusFilter === 'unmarked' && metrics.total > 0
+                ? 'Great job! Switch back to All to review or update anyone.'
+                : `No students match your current filter in ${selectedBranch}.`}
+            </p>
+            {statusFilter !== 'all' && (
               <button
-                onClick={fetchData}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold"
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold cursor-pointer"
               >
-                Retry
+                Show All Students
               </button>
-            </div>
-          ) : filteredStudents.length === 0 ? (
-            <div className="py-20 text-center space-y-3 p-6">
-              <Users className="w-12 h-12 text-zinc-600 mx-auto" />
-              <h3 className="text-base font-bold text-zinc-300">No students found</h3>
-              <p className="text-zinc-500 text-xs max-w-sm mx-auto">
-                No active students match the selected branch ({selectedBranch}) and search filter.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-950 text-zinc-400 text-[11px] uppercase font-bold tracking-wider font-mono border-b border-zinc-800">
-                    <th className="py-4 px-4 sm:px-6">Student & Belt</th>
-                    <th className="py-4 px-4 sm:px-6">Branch & Contact</th>
-                    <th className="py-4 px-4 sm:px-6 text-center">Daily Attendance ({selectedDate})</th>
-                    <th className="py-4 px-4 sm:px-6 text-center">Monthly Fees ({formatMonthKey(currentMonthKey)})</th>
-                    <th className="py-4 px-4 sm:px-6 text-right">Fee Reminder</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60 text-xs">
-                  {filteredStudents.map((student) => {
-                    const status = attendanceMap[student.studentId];
-                    const isAttendanceSaving = savingId === student.studentId;
-                    const isFeeSaving = feeSavingId === student.id;
-                    const isMonthPaid = (student.paidMonths || []).includes(currentMonthKey);
-                    const unpaidMonths = getUnpaidMonths(student, currentMonthKey);
+            )}
+          </div>
+        ) : viewMode === 'focus' && focusedStudent ? (
+          /* 🎯 FOCUS 1-BY-1 MINDFUL ROLL CALL VIEW */
+          (() => {
+            const status = attendanceMap[focusedStudent.studentId];
+            const isAttendanceSaving = savingId === focusedStudent.studentId;
+            const isFeeSaving = feeSavingId === focusedStudent.id;
+            const isMonthPaid = (focusedStudent.paidMonths || []).includes(currentMonthKey);
+            const unpaidMonths = getUnpaidMonths(focusedStudent, currentMonthKey);
 
-                    return (
-                      <tr 
-                        key={student.id} 
-                        className={`transition-colors hover:bg-slate-850/50 ${
-                          status === 'present' ? 'bg-emerald-950/10' : status === 'absent' ? 'bg-rose-950/10' : ''
-                        }`}
-                      >
-                        {/* Student Name & ID */}
-                        <td className="py-4 px-4 sm:px-6">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 shrink-0">
-                              {student.photoUrl ? (
-                                <img src={student.photoUrl} alt={student.fullName} className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-zinc-500 font-bold font-mono">
-                                  {student.fullName?.charAt(0) || 'K'}
-                                </div>
-                              )}
-                            </div>
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-white block text-sm">{student.fullName}</span>
-                              <div className="flex items-center space-x-2 text-[10px]">
-                                <span className="font-mono text-yellow-500 font-bold">{student.studentId}</span>
-                                <span className="text-zinc-600">·</span>
-                                <span className="text-zinc-300 font-medium">{student.beltLevel || 'White Belt'}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
+            return (
+              <div className="max-w-xl mx-auto">
+                <div className="bg-slate-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+                  {/* Card Top Navigation */}
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <button
+                      type="button"
+                      onClick={() => setFocusIndex(i => Math.max(0, i - 1))}
+                      disabled={focusIndex === 0}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-zinc-800 text-zinc-300 hover:text-white disabled:opacity-35 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span>Prev</span>
+                    </button>
 
-                        {/* Branch & Parent Contact */}
-                        <td className="py-4 px-4 sm:px-6 space-y-1">
-                          <span className="text-zinc-300 font-medium block">
-                            {student.branch || student.schoolName || selectedBranch}
+                    <span className="font-mono text-[11px] font-bold text-amber-400">
+                      Student {focusIndex + 1} of {displayStudents.length}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setFocusIndex(i => Math.min(displayStudents.length - 1, i + 1))}
+                      disabled={focusIndex >= displayStudents.length - 1}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-zinc-800 text-zinc-300 hover:text-white disabled:opacity-35 cursor-pointer"
+                    >
+                      <span>Skip</span>
+                      <SkipForward className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Student Portrait & Details */}
+                  <div className="flex flex-col items-center text-center space-y-3">
+                    <div className={`w-24 h-24 rounded-2xl overflow-hidden bg-zinc-800 border-2 shadow-lg ${
+                      status === 'present'
+                        ? 'border-emerald-500'
+                        : status === 'absent'
+                          ? 'border-red-500'
+                          : 'border-zinc-700'
+                    }`}>
+                      {focusedStudent.photoUrl ? (
+                        <img
+                          src={focusedStudent.photoUrl}
+                          alt={focusedStudent.fullName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl font-bold font-mono text-zinc-400">
+                          {focusedStudent.fullName?.charAt(0) || 'K'}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h2 className="font-heading text-2xl font-black text-white">
+                        {focusedStudent.fullName}
+                      </h2>
+                      <p className="text-xs font-mono text-amber-400 font-bold mt-0.5">
+                        {focusedStudent.studentId} · {focusedStudent.beltLevel || 'White Belt'}
+                      </p>
+                      <p className="text-xs text-zinc-400 mt-1">
+                        {focusedStudent.batch || 'Regular Batch'}
+                        {focusedStudent.parentName ? ` · Parent: ${focusedStudent.parentName}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Big Thumb-Friendly Present / Absent Buttons */}
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={isAttendanceSaving}
+                      onClick={() => handleFocusMark(focusedStudent, 'present')}
+                      className={`py-4 px-4 rounded-2xl text-sm font-heading font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                        status === 'present'
+                          ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25'
+                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>Present</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isAttendanceSaving}
+                      onClick={() => handleFocusMark(focusedStudent, 'absent')}
+                      className={`py-4 px-4 rounded-2xl text-sm font-heading font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                        status === 'absent'
+                          ? 'bg-red-500 text-white shadow-lg shadow-red-500/25'
+                          : 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40'
+                      }`}
+                    >
+                      <XCircle className="w-5 h-5" />
+                      <span>Absent</span>
+                    </button>
+                  </div>
+
+                  {/* Clean Bottom Fee & WhatsApp Strip */}
+                  <div className="pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-zinc-400">{getShortMonthKey(currentMonthKey)} Fee:</span>
+                      {isMonthPaid ? (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            Paid ✓
                           </span>
-                          <div className="flex items-center space-x-2 text-[10px] text-zinc-400">
-                            {student.parentName && <span>Parent: {student.parentName}</span>}
-                            {student.parentName && <span>·</span>}
-                            <span>📞 {student.phone || student.whatsApp || 'N/A'}</span>
-                          </div>
-                        </td>
-
-                        {/* Attendance Toggles */}
-                        <td className="py-4 px-4 sm:px-6">
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              onClick={() => handleMarkAttendance(student, 'present')}
-                              disabled={isAttendanceSaving}
-                              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                status === 'present'
-                                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                                  : 'bg-zinc-800/80 text-zinc-300 hover:bg-emerald-500/20 hover:text-emerald-400 border border-zinc-700'
-                              }`}
-                              title="Mark Present"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Present</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleMarkAttendance(student, 'absent')}
-                              disabled={isAttendanceSaving}
-                              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                status === 'absent'
-                                  ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
-                                  : 'bg-zinc-800/80 text-zinc-300 hover:bg-red-500/20 hover:text-red-400 border border-zinc-700'
-                              }`}
-                              title="Mark Absent"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              <span>Absent</span>
-                            </button>
-                          </div>
-                        </td>
-
-                        {/* Monthly Fee 1-Tap Toggle & Status (For All Students) */}
-                        <td className="py-4 px-4 sm:px-6 text-center">
-                          <div className="inline-flex flex-col items-center gap-1">
-                            {isMonthPaid ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  <span>Paid ✓</span>
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={isFeeSaving}
-                                  onClick={() => toggleStudentMonthPaid(student, currentMonthKey)}
-                                  className="text-[9px] font-mono text-zinc-500 hover:text-red-400 underline cursor-pointer"
-                                  title="Undo payment"
-                                >
-                                  {isFeeSaving ? '...' : 'Undo'}
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={isFeeSaving}
-                                onClick={() => toggleStudentMonthPaid(student, currentMonthKey)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-heading font-black uppercase tracking-wider bg-emerald-600/90 hover:bg-emerald-500 text-white active:scale-95 transition-all cursor-pointer border border-emerald-500/40"
-                                title={`Mark ${formatMonthKey(currentMonthKey)} as Paid`}
-                              >
-                                {isFeeSaving ? (
-                                  <>
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
-                                    <span>Saving...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCheck className="w-3 h-3" />
-                                    <span>Mark Paid</span>
-                                  </>
-                                )}
-                              </button>
-                            )}
-
-                            {unpaidMonths.length > 1 && (
-                              <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                                {unpaidMonths.length} Months Pending
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 1-Click WhatsApp Monthly Fee Reminder (For All Students) */}
-                        <td className="py-4 px-4 sm:px-6 text-right">
                           <button
-                            onClick={() => handleSendFeeReminder(student)}
-                            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 ${
-                              unpaidMonths.length > 0
-                                ? 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 hover:border-emerald-500'
-                                : 'bg-zinc-800/80 text-zinc-400 hover:text-white border border-zinc-700'
-                            }`}
-                            title={`Send WhatsApp fee reminder to ${student.fullName}`}
+                            type="button"
+                            disabled={isFeeSaving}
+                            onClick={() => toggleStudentMonthPaid(focusedStudent, currentMonthKey)}
+                            className="text-[10px] font-mono text-zinc-500 hover:text-red-400 underline cursor-pointer"
                           >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>{unpaidMonths.length > 0 ? 'Send Reminder' : 'Send Note'}</span>
+                            {isFeeSaving ? '...' : 'Undo'}
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isFeeSaving}
+                          onClick={() => toggleStudentMonthPaid(focusedStudent, currentMonthKey)}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>{isFeeSaving ? 'Saving...' : 'Mark Paid'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendFeeReminder(focusedStudent)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        unpaidMonths.length > 0
+                          ? 'bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/30'
+                          : 'bg-slate-950 text-zinc-400 hover:text-white border border-zinc-800'
+                      }`}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>{unpaidMonths.length > 0 ? `Fee Reminder (${unpaidMonths.length}m)` : 'WhatsApp'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        ) : (
+          /* ⊞ CLEAN RESPONSIVE CARDS GRID (No Horizontal Scrolling!) */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayStudents.map((student) => {
+              const status = attendanceMap[student.studentId];
+              const isAttendanceSaving = savingId === student.studentId;
+              const isFeeSaving = feeSavingId === student.id;
+              const isMonthPaid = (student.paidMonths || []).includes(currentMonthKey);
+              const unpaidMonths = getUnpaidMonths(student, currentMonthKey);
+
+              return (
+                <div
+                  key={student.id}
+                  className={`rounded-2xl border p-4 flex flex-col justify-between space-y-4 transition-all ${
+                    status === 'present'
+                      ? 'bg-emerald-950/15 border-emerald-500/35'
+                      : status === 'absent'
+                        ? 'bg-rose-950/15 border-red-500/35'
+                        : 'bg-slate-900/75 border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  {/* Card Top: Photo + Name + Roll ID + Belt */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 shrink-0">
+                        {student.photoUrl ? (
+                          <img src={student.photoUrl} alt={student.fullName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-400 font-bold font-mono">
+                            {student.fullName?.charAt(0) || 'K'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-white text-sm truncate">{student.fullName}</h3>
+                        <p className="text-[11px] font-mono text-amber-400 font-bold truncate">
+                          {student.studentId} · {student.beltLevel || 'White Belt'}
+                        </p>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5 flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-zinc-500 shrink-0" />
+                          <span>{student.phone || student.whatsApp || 'N/A'}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attendance Big Tap Buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMarkAttendance(student, 'present')}
+                      disabled={isAttendanceSaving}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                        status === 'present'
+                          ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                          : 'bg-slate-950 text-zinc-300 hover:bg-emerald-500/15 hover:text-emerald-300 border border-zinc-800'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Present</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleMarkAttendance(student, 'absent')}
+                      disabled={isAttendanceSaving}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                        status === 'absent'
+                          ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
+                          : 'bg-slate-950 text-zinc-300 hover:bg-red-500/15 hover:text-red-300 border border-zinc-800'
+                      }`}
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Absent</span>
+                    </button>
+                  </div>
+
+                  {/* Card Footer: Fee Status + 1-Tap WhatsApp */}
+                  <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {isMonthPaid ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>{getShortMonthKey(currentMonthKey)} Paid</span>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isFeeSaving}
+                            onClick={() => toggleStudentMonthPaid(student, currentMonthKey)}
+                            className="text-[10px] font-mono text-zinc-500 hover:text-red-400 underline cursor-pointer"
+                            title="Undo payment"
+                          >
+                            {isFeeSaving ? '...' : 'Undo'}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isFeeSaving}
+                          onClick={() => toggleStudentMonthPaid(student, currentMonthKey)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-emerald-600/85 hover:bg-emerald-500 text-white transition-all cursor-pointer"
+                          title={`Mark ${formatMonthKey(currentMonthKey)} as Paid`}
+                        >
+                          {isFeeSaving ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CheckCheck className="w-3 h-3" />
+                          )}
+                          <span>
+                            {unpaidMonths.length > 1
+                              ? `Pay (${unpaidMonths.length}m due)`
+                              : `Mark Paid`}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendFeeReminder(student)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0 ${
+                        unpaidMonths.length > 0
+                          ? 'bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/30'
+                          : 'bg-slate-950 text-zinc-400 hover:text-white border border-zinc-800'
+                      }`}
+                      title={`Send WhatsApp fee reminder to ${student.fullName}`}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>{unpaidMonths.length > 0 ? 'Remind' : 'Note'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
