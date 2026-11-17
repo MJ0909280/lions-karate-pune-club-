@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, ShieldCheck, Lock, UserCheck, Award, GraduationCap } from 'lucide-react';
+import { Menu, X, ShieldCheck, Lock, UserCheck, Award, GraduationCap, Flame } from 'lucide-react';
 import { checkFirestoreConnection } from '../firebase';
 
 interface NavbarProps {
@@ -35,9 +35,12 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
 
   const scrollToExplorerSection = (hash: string) => {
     setIsOpen(false);
+    const sameHash = window.location.hash === hash;
     window.location.hash = hash;
     if (currentView !== 'home') {
       onNavigate('home');
+    } else if (sameHash) {
+      document.getElementById('experience-center')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -101,9 +104,17 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
           <button
             type="button"
             onClick={() => scrollToExplorerSection('#batches')}
-            className="text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            className="text-zinc-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Batches
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToExplorerSection('#practice')}
+            className="flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Flame className="w-3.5 h-3.5" />
+            <span>5-Min Practice</span>
           </button>
           <button
             type="button"
@@ -203,6 +214,14 @@ export default function Navbar({ currentView, studentPortalTab, onNavigate }: Na
               className="p-3 rounded-lg bg-slate-900 border border-zinc-800 text-left text-xs font-heading font-bold uppercase text-zinc-200 cursor-pointer"
             >
               Batches
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToExplorerSection('#practice')}
+              className="p-3 rounded-lg bg-slate-900 border border-amber-500/30 text-left text-xs font-heading font-bold uppercase text-amber-300 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Flame className="w-3.5 h-3.5 text-amber-400" />
+              <span>5-Min Practice</span>
             </button>
             <button
               type="button"

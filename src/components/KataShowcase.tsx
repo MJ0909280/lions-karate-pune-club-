@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Play } from 'lucide-react';
+import { Play, Flame, ArrowRight } from 'lucide-react';
 
-export default function KataShowcase() {
+interface KataShowcaseProps {
+  onOpenPractice?: () => void;
+}
+
+export default function KataShowcase({ onOpenPractice }: KataShowcaseProps) {
   const [kataVideoUrl, setKataVideoUrl] = useState<string>(
     'https://res.cloudinary.com/dlzdagymx/video/upload/v1784001539/WhatsApp_Video_2026-07-14_at_9.23.13_AM_sve0ia.mp4'
   );
@@ -82,6 +86,30 @@ export default function KataShowcase() {
         </div>
       </div>
 
+      {onOpenPractice && (
+        <div className="bg-slate-950 border border-zinc-800 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <span className="font-mono text-xs uppercase tracking-widest text-amber-500 font-bold flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5" />
+              <span>Daily Home Routine · 5 Minutes</span>
+            </span>
+            <h3 className="font-heading text-lg font-black uppercase text-white">
+              Ready to Practice at Home?
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Follow the 3 guided posture photos (Mokuso Breathing, Stances &amp; Kata) with our calm dojo bell timer.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenPractice}
+            className="min-h-[48px] shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#9B1B20] hover:bg-red-600 text-white font-heading font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+          >
+            <span>Start 5-Min Practice</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

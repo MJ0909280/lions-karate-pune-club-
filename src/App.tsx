@@ -98,6 +98,9 @@ export default function App() {
         if (match && match[1]) {
           setSuccessDocId(match[1]);
         }
+      } else if (hash.startsWith('#practice')) {
+        setShowTrailer(false);
+        setView('home');
       } else {
         setView('home');
       }
@@ -147,7 +150,7 @@ export default function App() {
 
     if (nextView === 'home') {
       const currentHash = window.location.hash;
-      const sectionHashes = ['#about', '#kata', '#batches', '#coaches', '#gallery', '#testimonials', '#contact'];
+      const sectionHashes = ['#about', '#kata', '#practice', '#batches', '#coaches', '#gallery', '#testimonials', '#contact'];
       if (!sectionHashes.includes(currentHash)) {
         window.location.hash = '';
         window.scrollTo({ top: 0, behavior: 'smooth' });

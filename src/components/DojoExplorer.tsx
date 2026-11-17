@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Play, Users, Star, Image as ImageIcon, Phone } from 'lucide-react';
+import { Calendar, Shield, Play, Users, Star, Image as ImageIcon, Phone, Flame } from 'lucide-react';
 import Batches from './Batches';
 import About from './About';
 import KataShowcase from './KataShowcase';
+import MindfulPractice from './MindfulPractice';
 import Coaches from './Coaches';
 import Testimonials from './Testimonials';
 import Gallery from './Gallery';
@@ -16,6 +17,7 @@ type ExplorerTab =
   | 'batches'
   | 'about'
   | 'kata'
+  | 'practice'
   | 'coaches'
   | 'testimonials'
   | 'gallery'
@@ -31,6 +33,7 @@ export default function DojoExplorer({ onSelectBatch }: DojoExplorerProps) {
         '#batches': 'batches',
         '#about': 'about',
         '#kata': 'kata',
+        '#practice': 'practice',
         '#coaches': 'coaches',
         '#testimonials': 'testimonials',
         '#gallery': 'gallery',
@@ -54,6 +57,7 @@ export default function DojoExplorer({ onSelectBatch }: DojoExplorerProps) {
     { id: 'batches', label: 'Batches & Timings', icon: Calendar },
     { id: 'about', label: 'About Dojo', icon: Shield },
     { id: 'kata', label: 'Kata Forms', icon: Play },
+    { id: 'practice', label: '5-Min Practice', icon: Flame },
     { id: 'coaches', label: 'Senseis', icon: Users },
     { id: 'testimonials', label: 'Reviews', icon: Star },
     { id: 'gallery', label: 'Gallery & News', icon: ImageIcon },
@@ -93,7 +97,8 @@ export default function DojoExplorer({ onSelectBatch }: DojoExplorerProps) {
         <div className="bg-slate-950/60 border border-zinc-900 rounded-3xl p-5 sm:p-8 shadow-2xl">
           {activeTab === 'batches' && <Batches onSelectBatch={onSelectBatch} />}
           {activeTab === 'about' && <About />}
-          {activeTab === 'kata' && <KataShowcase />}
+          {activeTab === 'kata' && <KataShowcase onOpenPractice={() => setActiveTab('practice')} />}
+          {activeTab === 'practice' && <MindfulPractice />}
           {activeTab === 'coaches' && <Coaches />}
           {activeTab === 'testimonials' && <Testimonials />}
           {activeTab === 'gallery' && <Gallery />}
