@@ -196,8 +196,8 @@ export default function App() {
       {/* Dynamic SEO Headers */}
       {view === 'home' && (
         <SEOConfig
-          title="Traditional Shotokan Karate & Self-Defense Academy"
-          description="LIONS KARATE CLUB PUNE offers traditional Shotokan Karate, self-defense, and tournament training across Narhe, Manaji Nagar, Bhumkar Bridge & Jambulwadi, Pune."
+          title="Karate, Martial Arts & Self-Defense Academy"
+          description="LIONS KARATE CLUB PUNE offers Shotokan Karate, Martial Arts & Self-Defense near Narhe, Dhayari, Ambegaon Pathar, Katraj Bypass, Bhumkar Bridge & Jambulwadi."
           pagePath=""
         />
       )}

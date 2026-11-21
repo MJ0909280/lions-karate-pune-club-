@@ -33,13 +33,19 @@ export default function DojoMapEmbed() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-amber-500 font-bold block mb-1.5">
+          <div className="space-y-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-amber-500 font-bold block">
               📍 PUNE DOJO LOCATIONS
             </span>
             <h2 className="font-heading text-2xl sm:text-3xl font-black uppercase tracking-wider text-white">
               Visit Our Narhe &amp; South Pune Centers
             </h2>
+            <p className="text-xs sm:text-sm text-zinc-300">
+              Serving Narhe · Manaji Nagar · Dhayari · Ambegaon Pathar · Katraj Bypass · Bhumkar Bridge · Jambulwadi
+            </p>
+            <p className="text-xs text-zinc-400">
+              कराटे आणि सेल्फ डिफेन्स क्लासेस — नऱ्हे, धायरी, आंबेगाव पठार व कात्रज बायपास
+            </p>
           </div>
 
           <a

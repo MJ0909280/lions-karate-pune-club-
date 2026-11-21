@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import MartialButton from './MartialButton';
-import { Award, MapPin, Shield, ArrowRight, GraduationCap } from 'lucide-react';
+import { Award, MapPin, Shield, ArrowRight, GraduationCap, Phone } from 'lucide-react';
 
 interface HeroProps {
   onNavigate: (view: string) => void;
@@ -92,7 +92,7 @@ export default function Hero({ onNavigate }: HeroProps) {
           transition={{ duration: 0.7, delay: 0.2 }}
           className="text-sm sm:text-base text-zinc-300 max-w-2xl mx-auto leading-relaxed font-sans"
         >
-          Traditional Shotokan Karate, Self-Defense &amp; Kickboxing Academy in Narhe, Manaji Nagar, Bhumkar Bridge &amp; Jambulwadi, Pune. Forging discipline, physical strength, and tournament champions since 2023.
+          Traditional Shotokan Karate, Martial Arts, Self-Defense &amp; Kickboxing Academy serving Narhe, Manaji Nagar, Dhayari, Ambegaon Pathar, Katraj Bypass, Bhumkar Bridge &amp; Jambulwadi, Pune.
         </motion.p>
 
         {/* Action Buttons */}
@@ -100,7 +100,7 @@ export default function Hero({ onNavigate }: HeroProps) {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.7, delay: 0.3 }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-3"
+          className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 pt-3"
         >
           <MartialButton
             id="hero-btn-admission"
@@ -110,6 +110,16 @@ export default function Hero({ onNavigate }: HeroProps) {
             <span>ONLINE ADMISSION</span>
             <ArrowRight className="w-4 h-4" />
           </MartialButton>
+
+          <a
+            id="hero-btn-call"
+            href="tel:+919049688172"
+            aria-label="Call Sensei at +91 90496 88172"
+            className="min-h-[44px] inline-flex items-center justify-center gap-2 px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-heading font-black text-xs uppercase tracking-[0.18em] border border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-colors whitespace-nowrap shrink-0"
+          >
+            <Phone className="w-4 h-4" />
+            <span>CALL SENSEI</span>
+          </a>
 
           <MartialButton
             id="hero-btn-portal"
